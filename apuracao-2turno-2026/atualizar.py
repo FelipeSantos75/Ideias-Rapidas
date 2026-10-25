@@ -6,6 +6,8 @@ Uso: python3 atualizar.py <cod_eleicao> <saida.json>
 import datetime, json, os, sys, time, urllib.error, urllib.request
 
 BASE = "https://resultados.tse.jus.br/oficial/ele2026/{e}/dados/{uf}/{uf}-c0001-e{e:06d}-u.json"
+POR_RODADA = 4  # estados baixados por rodada
+PAUSA = 6     # segundos entre pedidos
 UFS = {"br": "Brasil", "ac": "Acre", "al": "Alagoas", "am": "Amazonas", "ap": "Amapá", "ba": "Bahia",
        "ce": "Ceará", "df": "Distrito Federal", "es": "Espírito Santo", "go": "Goiás", "ma": "Maranhão",
        "mg": "Minas Gerais", "ms": "Mato Grosso do Sul", "mt": "Mato Grosso", "pa": "Pará", "pb": "Paraíba",
@@ -24,12 +26,12 @@ def baixar(e, uf):
     for tentativa in range(2):
         try:
             with urllib.request.urlopen(BASE.format(e=e, uf=uf), timeout=30) as r:
-                time.sleep(1.5)
+                time.sleep(PAUSA)
                 return json.load(r)
         except urllib.error.HTTPError as err:
             if err.code != 429 or tentativa:
                 raise
-            time.sleep(15)
+            time.sleep(30)
 
 
 def linha(uf, d):
@@ -61,20 +63,31 @@ def linha(uf, d):
 
 def main():
     e, out = int(sys.argv[1]), sys.argv[2]
-    # Guarda o último arquivo bom de cada UF; se o TSE limitar um estado, usa o anterior.
+    # O TSE limita poucos pedidos por minuto. Por rodada: Brasil sempre + POR_RODADA estados
+    # em rodízio (primeiro os que ainda não têm dado). Os demais usam o último arquivo bom.
     cache = os.path.join(os.path.dirname(os.path.abspath(out)), f"cache-{e}")
     os.makedirs(cache, exist_ok=True)
+    arq = lambda uf: os.path.join(cache, uf + ".json")
+    estados = [uf for uf in UFS if uf != "br"]
+    pos_f = os.path.join(cache, "rodizio.txt")
+    pos = int(open(pos_f).read()) if os.path.exists(pos_f) else 0
+    sem = [uf for uf in estados if not os.path.exists(arq(uf))]
+    fila = sem + [estados[(pos + i) % len(estados)] for i in range(len(estados))]
+    vez = list(dict.fromkeys(fila))[:POR_RODADA]
     dados, falhas = {}, []
-    for uf in UFS:
-        arq = os.path.join(cache, uf + ".json")
+    for uf in ["br"] + vez:
         try:
-            dados[uf] = baixar(e, uf)
-            json.dump(dados[uf], open(arq, "w"))
+            d = baixar(e, uf)
+            json.dump(d, open(arq(uf), "w"))
         except Exception:
-            if uf == "br" or not os.path.exists(arq):
+            if uf == "br":
                 raise
             falhas.append(uf)
-            dados[uf] = json.load(open(arq))
+    open(pos_f, "w").write(str((pos + POR_RODADA) % len(estados)))
+    for uf in UFS:
+        if os.path.exists(arq(uf)):
+            dados[uf] = json.load(open(arq(uf)))
+    dados = {"br": dados["br"], **{k: v for k, v in dados.items() if k != "br"}}
     rows = [linha(uf, d) for uf, d in dados.items()]
     # Quando o Claude consultou o TSE e quando a próxima leva deve chegar à página (estimativa).
     agora = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
@@ -84,7 +97,7 @@ def main():
     json.dump(rows, open(out, "w"), ensure_ascii=False)
     br = rows[0]
     if falhas:
-        print("usando dado anterior de:", ",".join(falhas), file=sys.stderr)
+        print("sem dado novo de:", ",".join(falhas), file=sys.stderr)
     print(f'{br["gerado_tse"]} secoes={br["secoes_pct"]:.4%} lula={br.get("lula_pct")} flavio={br.get("flavio_pct")}')
 
 

@@ -13,7 +13,7 @@ Mostra o placar nacional, % de seções apuradas, comparecimento/abstenção/bra
 Versão painel (artefato do Claude):
 - `atualizar.py <cod_eleicao> <saida.json>` lê os arquivos oficiais do TSE (resultados.tse.jus.br) e gera linhas do Brasil + cada UF.
   - 2º turno = `6258`, 1º turno = `6257`.
-- `vigiar.sh <saida.json>` roda o script a cada 2 min e avisa quando os votos mudam; o Claude então envia o arquivo novo para o painel.
+- `vigiar.sh <saida.json>` roda o script a cada 2 min (Brasil sempre, 4 estados por vez em rodízio, porque o TSE limita pedidos) e avisa quando os votos mudam; o Claude então envia o arquivo novo para o painel.
 - `gerar_mapa.py` transforma o GeoJSON dos estados em contornos SVG simplificados para o mapa.
 - `pagina.html` é o código da página do painel (artefato do tipo Dashboard).
 
