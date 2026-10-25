@@ -3,7 +3,7 @@
 Uso: python3 atualizar.py <cod_eleicao> <saida.json>
 2º turno 2026 = 6258 (1º turno = 6257).
 """
-import json, os, sys, time, urllib.error, urllib.request
+import datetime, json, os, sys, time, urllib.error, urllib.request
 
 BASE = "https://resultados.tse.jus.br/oficial/ele2026/{e}/dados/{uf}/{uf}-c0001-e{e:06d}-u.json"
 UFS = {"br": "Brasil", "ac": "Acre", "al": "Alagoas", "am": "Amazonas", "ap": "Amapá", "ba": "Bahia",
@@ -76,6 +76,11 @@ def main():
             falhas.append(uf)
             dados[uf] = json.load(open(arq))
     rows = [linha(uf, d) for uf, d in dados.items()]
+    # Quando o Claude consultou o TSE e quando a próxima leva deve chegar à página (estimativa).
+    agora = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
+    prox = agora + datetime.timedelta(seconds=int(os.environ.get("PROXIMA_SEG", "210")))
+    rows[0]["consultado_em"] = agora.isoformat().replace("+00:00", "Z")
+    rows[0]["proxima_em"] = prox.isoformat().replace("+00:00", "Z")
     json.dump(rows, open(out, "w"), ensure_ascii=False)
     br = rows[0]
     if falhas:

@@ -47,6 +47,20 @@
 .ap-tip { position: absolute; pointer-events: none; background: var(--cds-surface-popover); border: 1px solid var(--cds-border); border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); padding: var(--cds-pad-xs) var(--cds-pad-sm); font-size: var(--cds-font-size-caption); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ap-tip-t { color: var(--cds-text-secondary); margin-bottom: 2px; }
 .ap-tip i { display: inline-block; width: .5rem; height: .5rem; border-radius: 2px; margin-right: 4px; }
+.ap-next { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px var(--cds-gap-sm); margin-top: var(--cds-gap-sm); padding: var(--cds-pad-xs) var(--cds-pad-sm); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); background: var(--color-panel); font-size: var(--cds-font-size-caption); font-variant-numeric: tabular-nums; transition: border-color var(--cds-dur-slow), background var(--cds-dur-slow); }
+.ap-next svg { width: 1.1rem; height: 1.1rem; transform: rotate(-90deg); flex: none; }
+.ap-next .trilho { fill: none; stroke: var(--cds-chart-grid); stroke-width: 3; }
+.ap-next .arco { fill: none; stroke: var(--color-fg); stroke-width: 3; stroke-linecap: round; transition: stroke-dashoffset 1s linear; }
+.ap-next.buscando .arco { stroke: var(--color-warn); }
+.ap-next.atrasada .arco { stroke: var(--color-bad); }
+.ap-next.novo { border-color: var(--color-ok); }
+.ap-next.novo .arco { stroke: var(--color-ok); }
+.ap-next-t, .ap-next-sub { white-space: nowrap; }
+.ap-next-sub { color: var(--color-fg-muted); }
+@media (prefers-reduced-motion: no-preference) {
+  .ap-next.buscando svg { animation: ap-pulso 1.2s var(--cds-ease-out) infinite; }
+}
+@keyframes ap-pulso { 50% { opacity: .35; } }
 [data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
 @media (max-width: 30rem) { .ap-big { font-size: var(--cds-font-size-title); } }
 </style>
@@ -55,6 +69,10 @@
   <header id="topo">
     <h1 class="ap-title">Presidente · 2º turno 2026</h1>
     <p class="ap-take" id="resumo"><span class="ap-take-text dash-skeleton">—</span></p>
+    <div class="ap-next" id="proxima" data-source="apuracao" hidden aria-live="polite">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><circle class="trilho" cx="10" cy="10" r="8"></circle><circle class="arco" cx="10" cy="10" r="8" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"></circle></svg>
+      <span class="ap-next-t"></span><span class="ap-next-sub"></span>
+    </div>
     <p class="ap-meta">Dados do TSE gerados em <span class="ap-gerado dash-skeleton" data-source="apuracao" data-field="gerado_tse" data-where="uf=BR">—</span> (horário de Brasília).</p>
   </header>
 
@@ -179,6 +197,38 @@
   }
 
   let latest = { rows: [], colors: {} };
+
+  // Contagem até a próxima atualização (horários vêm na linha BR dos dados)
+  const prox = $('#proxima');
+  let ultimaConsulta = null, novoAte = 0;
+  const hora = (d) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  function tic() {
+    const br = latest.rows.find((r) => r.uf === 'BR');
+    if (!br || !br.proxima_em || br.finalizado) { prox.hidden = true; return; }
+    prox.hidden = false;
+    const ini = new Date(br.consultado_em).getTime(), fim = new Date(br.proxima_em).getTime(), agora = Date.now();
+    const falta = Math.round((fim - agora) / 1000);
+    const t = $('.ap-next-t'), sub = $('.ap-next-sub'), arco = $('.ap-next .arco');
+    prox.classList.toggle('novo', agora < novoAte);
+    prox.classList.toggle('buscando', falta <= 0 && falta > -180);
+    prox.classList.toggle('atrasada', falta <= -180);
+    if (agora < novoAte) {
+      t.textContent = 'Números novos chegaram';
+      arco.setAttribute('stroke-dashoffset', '0');
+    } else if (falta > 0) {
+      const m = Math.floor(falta / 60), sg = String(falta % 60).padStart(2, '0');
+      t.textContent = 'Próxima atualização em ~' + m + ':' + sg;
+      arco.setAttribute('stroke-dashoffset', String(100 - Math.max(0, Math.min(100, ((agora - ini) / (fim - ini)) * 100))));
+    } else if (falta > -180) {
+      t.textContent = 'Buscando números novos…';
+      arco.setAttribute('stroke-dashoffset', '0');
+    } else {
+      t.textContent = 'Atualização atrasada. O TSE pode estar limitando as consultas.';
+      arco.setAttribute('stroke-dashoffset', '0');
+    }
+    sub.textContent = 'TSE consultado às ' + new Date(ini).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  }
+  setInterval(tic, 1000);
   let tipUf = null;
   const box = $('.ap-map-box'), tip = $('.ap-tip');
   function showTip(uf) {
@@ -254,6 +304,12 @@
     }
 
     latest = { rows, colors };
+    const brNow = rows.find((x) => x.uf === 'BR');
+    if (brNow && brNow.consultado_em && brNow.consultado_em !== ultimaConsulta) {
+      if (ultimaConsulta) novoAte = Date.now() + 5000;
+      ultimaConsulta = brNow.consultado_em;
+    }
+    tic();
     // Mapa
     const m = dash.data('mapa_estados');
     const shapes = m.status === 'ok' && Array.isArray(m.data) ? m.data : [];

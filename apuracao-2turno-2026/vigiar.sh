@@ -4,7 +4,7 @@ DIR=$(cd "$(dirname "$0")" && pwd)
 OUT=${1:?saida}; TMP=$OUT.tmp; LAST=$OUT.hash
 while true; do
   if msg=$(python3 "$DIR/atualizar.py" 6258 "$TMP" 2>&1); then
-    h=$(python3 -c "import json,sys,hashlib;r=json.load(open(sys.argv[1]));print(hashlib.md5(json.dumps([{k:v for k,v in x.items() if k not in('gerado_tse',)} for x in r]).encode()).hexdigest())" "$TMP")
+    h=$(python3 -c "import json,sys,hashlib;r=json.load(open(sys.argv[1]));print(hashlib.md5(json.dumps([{k:v for k,v in x.items() if k not in('gerado_tse','consultado_em','proxima_em')} for x in r]).encode()).hexdigest())" "$TMP")
     if [ "$h" != "$(cat "$LAST" 2>/dev/null)" ]; then
       mv "$TMP" "$OUT"; echo "$h" > "$LAST"; echo "NOVO $msg"
       grep -q '"finalizado": true' <(python3 -c "import json;print(json.dumps(json.load(open('$OUT'))[0]))") && { echo "FINALIZADO"; exit 0; }
