@@ -10,6 +10,7 @@ Cada ideia vira um protótipo pequeno, quase sempre um **artefato** (página HTM
 - Cada pasta tem no mínimo:
   - `README.md` — a ideia em 2–5 linhas, como usar e o status.
   - `index.html` — o artefato, autocontido (HTML + CSS + JS no mesmo arquivo sempre que possível).
+    - Painéis com dados (tipo Dashboard) guardam o código da página em `pagina.html` e os scripts que buscam os dados ao lado.
 - Manter simples: sem build, sem dependências locais. Bibliotecas externas só via CDN com versão fixa.
 - Funcionar bem no celular (layout responsivo, toque).
 - Ao criar uma ideia nova, adicionar uma linha no índice abaixo.
@@ -34,4 +35,4 @@ Passos curtos.
 ## Índice de ideias
 | Pasta | Ideia | Status |
 |-------|-------|--------|
-| _(nenhuma ainda)_ | | |
+| [`apuracao-2turno-2026`](apuracao-2turno-2026/) | Apuração ao vivo do 2º turno para presidente | testando |
