@@ -3,8 +3,7 @@
 Uso: python3 atualizar.py <cod_eleicao> <saida.json>
 2º turno 2026 = 6258 (1º turno = 6257).
 """
-import json, sys, urllib.request
-from concurrent.futures import ThreadPoolExecutor
+import json, sys, time, urllib.error, urllib.request
 
 BASE = "https://resultados.tse.jus.br/oficial/ele2026/{e}/dados/{uf}/{uf}-c0001-e{e:06d}-u.json"
 UFS = {"br": "Brasil", "ac": "Acre", "al": "Alagoas", "am": "Amazonas", "ap": "Amapá", "ba": "Bahia",
@@ -21,8 +20,16 @@ def num(x):
 
 
 def baixar(e, uf):
-    with urllib.request.urlopen(BASE.format(e=e, uf=uf), timeout=30) as r:
-        return json.load(r)
+    # Um pedido por vez, com pausa; se o TSE limitar (429), espera e tenta mais uma vez.
+    for tentativa in range(2):
+        try:
+            with urllib.request.urlopen(BASE.format(e=e, uf=uf), timeout=30) as r:
+                time.sleep(0.7)
+                return json.load(r)
+        except urllib.error.HTTPError as err:
+            if err.code != 429 or tentativa:
+                raise
+            time.sleep(15)
 
 
 def linha(uf, d):
@@ -54,8 +61,7 @@ def linha(uf, d):
 
 def main():
     e, out = int(sys.argv[1]), sys.argv[2]
-    with ThreadPoolExecutor(3) as ex:
-        dados = dict(zip(UFS, ex.map(lambda uf: baixar(e, uf), UFS)))
+    dados = {uf: baixar(e, uf) for uf in UFS}
     rows = [linha(uf, d) for uf, d in dados.items()]
     json.dump(rows, open(out, "w"), ensure_ascii=False)
     br = rows[0]
