@@ -3,7 +3,7 @@
 Uso: python3 atualizar.py <cod_eleicao> <saida.json>
 2º turno 2026 = 6258 (1º turno = 6257).
 """
-import json, sys, time, urllib.error, urllib.request
+import json, os, sys, time, urllib.error, urllib.request
 
 BASE = "https://resultados.tse.jus.br/oficial/ele2026/{e}/dados/{uf}/{uf}-c0001-e{e:06d}-u.json"
 UFS = {"br": "Brasil", "ac": "Acre", "al": "Alagoas", "am": "Amazonas", "ap": "Amapá", "ba": "Bahia",
@@ -24,7 +24,7 @@ def baixar(e, uf):
     for tentativa in range(2):
         try:
             with urllib.request.urlopen(BASE.format(e=e, uf=uf), timeout=30) as r:
-                time.sleep(0.7)
+                time.sleep(1.5)
                 return json.load(r)
         except urllib.error.HTTPError as err:
             if err.code != 429 or tentativa:
@@ -61,10 +61,25 @@ def linha(uf, d):
 
 def main():
     e, out = int(sys.argv[1]), sys.argv[2]
-    dados = {uf: baixar(e, uf) for uf in UFS}
+    # Guarda o último arquivo bom de cada UF; se o TSE limitar um estado, usa o anterior.
+    cache = os.path.join(os.path.dirname(os.path.abspath(out)), f"cache-{e}")
+    os.makedirs(cache, exist_ok=True)
+    dados, falhas = {}, []
+    for uf in UFS:
+        arq = os.path.join(cache, uf + ".json")
+        try:
+            dados[uf] = baixar(e, uf)
+            json.dump(dados[uf], open(arq, "w"))
+        except Exception:
+            if uf == "br" or not os.path.exists(arq):
+                raise
+            falhas.append(uf)
+            dados[uf] = json.load(open(arq))
     rows = [linha(uf, d) for uf, d in dados.items()]
     json.dump(rows, open(out, "w"), ensure_ascii=False)
     br = rows[0]
+    if falhas:
+        print("usando dado anterior de:", ",".join(falhas), file=sys.stderr)
     print(f'{br["gerado_tse"]} secoes={br["secoes_pct"]:.4%} lula={br.get("lula_pct")} flavio={br.get("flavio_pct")}')
 
 
