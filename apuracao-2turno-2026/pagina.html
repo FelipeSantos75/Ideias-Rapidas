@@ -212,6 +212,7 @@
     prox.classList.toggle('novo', agora < novoAte);
     prox.classList.toggle('buscando', falta <= 0 && falta > -180);
     prox.classList.toggle('atrasada', falta <= -180);
+    sub.hidden = falta <= -180 && agora >= novoAte;
     if (agora < novoAte) {
       t.textContent = 'Números novos chegaram';
       arco.setAttribute('stroke-dashoffset', '0');
@@ -223,7 +224,7 @@
       t.textContent = 'Buscando números novos…';
       arco.setAttribute('stroke-dashoffset', '0');
     } else {
-      t.textContent = 'Atualização atrasada. O TSE pode estar limitando as consultas.';
+      t.textContent = 'O TSE não divulga números novos desde ' + String(br.gerado_tse).slice(11, 16) + '. Conferindo a cada ~2 min.';
       arco.setAttribute('stroke-dashoffset', '0');
     }
     sub.textContent = 'TSE consultado às ' + new Date(ini).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
