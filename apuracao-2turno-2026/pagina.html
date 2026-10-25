@@ -1,5 +1,5 @@
 <style>
-.ap { display: grid; gap: var(--cds-gap-lg); font-family: var(--font-anthropic-sans); max-width: 60rem; margin-inline: auto; }
+.ap { --cor-lula: #dc3b3b; --cor-flavio: #2f6fe0; display: grid; gap: var(--cds-gap-lg); font-family: var(--font-anthropic-sans); max-width: 60rem; margin-inline: auto; }
 .ap-title { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0; text-wrap: balance; }
 .ap-take { margin: var(--cds-gap-xs) 0 0; font-size: var(--cds-font-size-body); line-height: 1.5; }
 .ap-take b, .ap b { font-weight: var(--cds-font-weight-medium); }
@@ -31,12 +31,22 @@
 .ap-stats dd { margin: 0; font-size: var(--cds-font-size-heading); font-variant-numeric: tabular-nums; }
 .ap-stats small { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); font-variant-numeric: tabular-nums; }
 .ap-scroll { overflow-x: auto; }
-.ap-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-.ap-table th, .ap-table td { padding: var(--cds-pad-xs) var(--cds-pad-sm); text-align: right; border-bottom: 1px solid var(--color-border-line); white-space: nowrap; }
+.ap-table { width: 100%; border-collapse: collapse; font-size: var(--cds-font-size-caption); font-variant-numeric: tabular-nums; }
+.ap-table th, .ap-table td { padding: var(--cds-pad-xs) 6px; text-align: right; border-bottom: 1px solid var(--color-border-line); white-space: nowrap; }
 .ap-table th:first-child, .ap-table td:first-child { text-align: left; white-space: normal; }
 .ap-table th { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); font-weight: var(--cds-font-weight-medium); }
 .ap-table td.ap-lead { font-weight: var(--cds-font-weight-medium); color: var(--c); }
 .ap-table tr.ap-br td { font-weight: var(--cds-font-weight-medium); }
+.ap-map-box { position: relative; min-height: 12rem; }
+.ap-map { display: block; width: 100%; max-width: 34rem; margin-inline: auto; height: auto; }
+.ap-map path { stroke: var(--color-panel); stroke-width: 1.5; stroke-linejoin: round; cursor: pointer; transition: fill-opacity var(--cds-dur-slow); }
+.ap-map path:hover, .ap-map path.ap-on { stroke: var(--color-fg); stroke-width: 2.5; }
+.ap-legend { display: flex; flex-wrap: wrap; gap: var(--cds-gap-sm) var(--cds-gap-md); margin-top: var(--cds-gap-sm); color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+.ap-legend span { display: inline-flex; align-items: center; gap: var(--cds-gap-xs); }
+.ap-legend i { display: inline-block; width: .75rem; height: .75rem; border-radius: 3px; }
+.ap-tip { position: absolute; pointer-events: none; background: var(--cds-surface-popover); border: 1px solid var(--cds-border); border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); padding: var(--cds-pad-xs) var(--cds-pad-sm); font-size: var(--cds-font-size-caption); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ap-tip-t { color: var(--cds-text-secondary); margin-bottom: 2px; }
+.ap-tip i { display: inline-block; width: .5rem; height: .5rem; border-radius: 2px; margin-right: 4px; }
 [data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
 @media (max-width: 30rem) { .ap-big { font-size: var(--cds-font-size-title); } }
 </style>
@@ -72,6 +82,20 @@
       <div class="ap-half" aria-hidden="true"></div>
     </div>
     <div class="ap-split-legend"><span>Votos válidos</span><span>A linha marca 50%</span></div>
+  </section>
+
+  <section class="ap-card" id="mapa">
+    <h2 class="ap-h2">Mapa por estado</h2>
+    <p class="ap-note">A cor mostra quem lidera em cada estado. Quanto mais forte, maior a vantagem. Toque num estado para ver os números.</p>
+    <div class="ap-map-box" data-source="apuracao mapa_estados">
+      <svg class="ap-map" role="img" aria-label="Mapa do Brasil por estado"></svg>
+      <div class="ap-tip" hidden></div>
+    </div>
+    <div class="ap-legend">
+      <span><i class="ap-sw-l"></i>Lula lidera</span>
+      <span><i class="ap-sw-f"></i>Flávio lidera</span>
+      <span><i style="background: var(--cds-chart-grid)"></i>Sem votos apurados</span>
+    </div>
   </section>
 
   <section class="ap-card" id="andamento">
@@ -154,8 +178,43 @@
     });
   }
 
+  let latest = { rows: [], colors: {} };
+  let tipUf = null;
+  const box = $('.ap-map-box'), tip = $('.ap-tip');
+  function showTip(uf) {
+    const u = latest.rows.find((r) => r.uf === uf);
+    const el = box.querySelector('path[data-uf="' + uf + '"]');
+    if (!u || !el) { tip.hidden = true; return; }
+    tipUf = uf;
+    box.querySelectorAll('path.ap-on').forEach((p) => p.classList.remove('ap-on'));
+    el.classList.add('ap-on');
+    const line = (k, nome) => {
+      const d = document.createElement('div');
+      const i = document.createElement('i'); i.style.background = latest.colors[k];
+      d.append(i, nome + ' ' + fmtP(u[k + '_pct']));
+      return d;
+    };
+    const t = document.createElement('div'); t.className = 'ap-tip-t'; t.textContent = u.nome + ' · ' + fmtP(u.secoes_pct) + ' apurado';
+    tip.replaceChildren(t, line('lula', 'Lula'), line('flavio', 'Flávio'));
+    tip.hidden = false;
+    const b = box.getBoundingClientRect(), r = el.getBoundingClientRect();
+    let x = r.left - b.left + r.width / 2 - tip.offsetWidth / 2;
+    let y = r.top - b.top - tip.offsetHeight - 6;
+    if (y < 0) y = r.bottom - b.top + 6;
+    x = Math.max(0, Math.min(x, b.width - tip.offsetWidth));
+    tip.style.left = x + 'px'; tip.style.top = y + 'px';
+  }
+  box.addEventListener('click', (e) => {
+    const p = e.target.closest('path[data-uf]');
+    if (p) showTip(p.dataset.uf); else { tip.hidden = true; tipUf = null; box.querySelectorAll('path.ap-on').forEach((x) => x.classList.remove('ap-on')); }
+  });
+  box.addEventListener('pointerover', (e) => { const p = e.target.closest('path[data-uf]'); if (p && e.pointerType === 'mouse') showTip(p.dataset.uf); });
+
   dash.onData(() => {
-    const colors = { lula: dash.colors[0], flavio: dash.colors[1] };
+    const cs = getComputedStyle(root);
+    const colors = { lula: cs.getPropertyValue('--cor-lula').trim(), flavio: cs.getPropertyValue('--cor-flavio').trim() };
+    $('.ap-sw-l').style.background = colors.lula;
+    $('.ap-sw-f').style.background = colors.flavio;
     $('#lula').style.setProperty('--c', colors.lula);
     $('#flavio').style.setProperty('--c', colors.flavio);
 
@@ -192,6 +251,41 @@
       take.textContent = s.lider === 'Empate'
         ? pre + 'os dois estão empatados.'
         : pre + (br.finalizado ? s.lider + ' venceu' : s.lider + ' lidera') + ' com ' + fmtP(s.lider === 'Lula' ? br.lula_pct : br.flavio_pct) + ' dos votos válidos, ' + fmtN.format(s.vantagem_votos) + ' votos à frente.';
+    }
+
+    latest = { rows, colors };
+    // Mapa
+    const m = dash.data('mapa_estados');
+    const shapes = m.status === 'ok' && Array.isArray(m.data) ? m.data : [];
+    const svg = $('.ap-map');
+    if (shapes.length) {
+      svg.setAttribute('viewBox', '0 0 ' + shapes[0].largura + ' ' + shapes[0].altura);
+      const byUf = Object.fromEntries(rows.map((u) => [u.uf, u]));
+      const NS = 'http://www.w3.org/2000/svg';
+      if (svg.childElementCount !== shapes.length) {
+        svg.replaceChildren(...shapes.map((sh) => {
+          const el = document.createElementNS(NS, 'path');
+          el.setAttribute('d', sh.caminho);
+          el.dataset.uf = sh.uf;
+          return el;
+        }));
+      }
+      svg.querySelectorAll('path').forEach((el) => {
+        const u = byUf[el.dataset.uf];
+        const vv = u ? u.lula_votos + u.flavio_votos : 0;
+        if (!u || !vv || u.lula_votos === u.flavio_votos) {
+          el.style.fill = 'var(--cds-chart-grid)';
+          el.style.fillOpacity = 1;
+        } else {
+          const lead = u.lula_votos > u.flavio_votos ? 'lula' : 'flavio';
+          const share = Math.max(u.lula_votos, u.flavio_votos) / vv;
+          el.style.fill = colors[lead];
+          el.style.fillOpacity = 0.3 + 0.7 * Math.min(1, (share - 0.5) / 0.2);
+        }
+      });
+      if (tipUf) showTip(tipUf);
+    } else {
+      svg.replaceChildren();
     }
 
     // Tabela por estado
