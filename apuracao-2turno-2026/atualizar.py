@@ -54,7 +54,7 @@ def linha(uf, d):
 
 def main():
     e, out = int(sys.argv[1]), sys.argv[2]
-    with ThreadPoolExecutor(8) as ex:
+    with ThreadPoolExecutor(3) as ex:
         dados = dict(zip(UFS, ex.map(lambda uf: baixar(e, uf), UFS)))
     rows = [linha(uf, d) for uf, d in dados.items()]
     json.dump(rows, open(out, "w"), ensure_ascii=False)

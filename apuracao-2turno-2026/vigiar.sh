@@ -10,7 +10,8 @@ while true; do
       grep -q '"finalizado": true' <(python3 -c "import json;print(json.dumps(json.load(open('$OUT'))[0]))") && { echo "FINALIZADO"; exit 0; }
     fi
   else
-    echo "ERRO $msg" | tail -1
+    echo "ERRO $(echo "$msg" | tail -1)"
+    sleep 300  # TSE limitou (429) ou falhou: espera mais antes de tentar de novo
   fi
   sleep 120
 done

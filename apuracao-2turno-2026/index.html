@@ -157,7 +157,7 @@ body {
     </div>
   </section>
 
-  <p class="ap-foot">Dados oficiais lidos direto do <a href="https://resultados.tse.jus.br/oficial/app/index.html" target="_blank" rel="noopener">TSE</a>, atualizados a cada 30 segundos enquanto a página está aberta. Contorno dos estados: projeto aberto click_that_hood.</p>
+  <p class="ap-foot">Dados oficiais lidos direto do <a href="https://resultados.tse.jus.br/oficial/app/index.html" target="_blank" rel="noopener">TSE</a>, atualizados a cada 30 segundos (estados a cada 2 minutos) enquanto a página está aberta. Contorno dos estados: projeto aberto click_that_hood.</p>
 </main>
 
 <script>
@@ -174,7 +174,7 @@ body {
   const $ = (s, el = document) => el.querySelector(s);
   const set = (id, t) => { $('#' + id).textContent = t; };
 
-  const estado = { linhas: {}, t1: {}, mapa: [], tipUf: null };
+  const estado = { linhas: {}, t1: {}, mapa: [], tipUf: null, ultEstados: 0 };
 
   function linha(uf, d) {
     const r = { uf: uf.toUpperCase(), nome: UFS[uf], lula_votos: 0, flavio_votos: 0, lula_pct: 0, flavio_pct: 0 };
@@ -198,7 +198,11 @@ body {
 
   async function atualizar() {
     const live = $('#live');
-    const res = await Promise.allSettled(Object.keys(UFS).map(baixar));
+    // Brasil a cada 30 s; estados a cada 2 min, para não sobrecarregar o TSE
+    const agora = Date.now();
+    const comEstados = agora - estado.ultEstados >= 120000;
+    if (comEstados) estado.ultEstados = agora;
+    const res = await Promise.allSettled((comEstados ? Object.keys(UFS) : ['br']).map(baixar));
     let ok = 0;
     res.forEach((r) => { if (r.status === 'fulfilled') { estado.linhas[r.value.uf] = r.value; ok++; } });
     live.className = 'ap-live ' + (ok ? 'on' : 'err');
