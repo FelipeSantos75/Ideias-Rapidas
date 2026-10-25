@@ -6,7 +6,7 @@ Uso: python3 atualizar.py <cod_eleicao> <saida.json>
 import datetime, json, os, sys, time, urllib.error, urllib.request
 
 BASE = "https://resultados.tse.jus.br/oficial/ele2026/{e}/dados/{uf}/{uf}-c0001-e{e:06d}-u.json"
-POR_RODADA = 4  # estados baixados por rodada
+POR_RODADA = 2  # estados baixados por rodada
 PAUSA = 6     # segundos entre pedidos
 UFS = {"br": "Brasil", "ac": "Acre", "al": "Alagoas", "am": "Amazonas", "ap": "Amapá", "ba": "Bahia",
        "ce": "Ceará", "df": "Distrito Federal", "es": "Espírito Santo", "go": "Goiás", "ma": "Maranhão",
