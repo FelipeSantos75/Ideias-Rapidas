@@ -11,6 +11,7 @@ Cada ideia vira um protótipo pequeno, quase sempre um **artefato** (página HTM
   - `README.md` — a ideia em 2–5 linhas, como usar e o status.
   - `index.html` — o artefato, autocontido (HTML + CSS + JS no mesmo arquivo sempre que possível).
     - Painéis com dados (tipo Dashboard) guardam o código da página em `pagina.html` e os scripts que buscam os dados ao lado.
+- O repositório é publicado no GitHub Pages: `index.html` da raiz lista as ideias (adicionar um link a cada ideia nova) e cada pasta abre em `https://felipesantos75.github.io/Ideias-Rapidas/<pasta>/`.
 - Manter simples: sem build, sem dependências locais. Bibliotecas externas só via CDN com versão fixa.
 - Funcionar bem no celular (layout responsivo, toque).
 - Ao criar uma ideia nova, adicionar uma linha no índice abaixo.

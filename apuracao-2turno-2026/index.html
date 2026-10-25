@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Apuração 2º Turno 2026</title>
+<meta name="description" content="Apuração ao vivo do 2º turno para presidente, com dados oficiais do TSE.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+/* Layout: uma coluna estreita, placar no topo, mapa, andamento, tabela. */
+:root {
+  --bg: #f3f4f6; --panel: #ffffff; --fg: #15171c; --muted: #5e6470; --line: #dfe2e8;
+  --grid: #e7e9ee; --ref: #2a2d34; --popover: #ffffff;
+  --lula: #dc3b3b; --flavio: #2f6fe0;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --fs-cap: .78rem; --fs-body: .95rem; --fs-head: 1.06rem; --fs-title: 1.75rem;
+  --gap-xs: 4px; --gap-sm: 8px; --gap-md: 12px; --gap-lg: 20px;
+  --radius: 10px; --pad: 16px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #101217; --panel: #191c23; --fg: #eceef2; --muted: #9aa1ad; --line: #2c3039; --grid: #2a2e37; --ref: #d8dbe1; --popover: #222630; --lula: #ef5a5a; --flavio: #5b8ff0; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: var(--fs-body); line-height: 1.45;
+  padding-block: max(16px, env(safe-area-inset-top, 0px)) max(24px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.ap { display: grid; gap: var(--gap-lg); max-width: 46rem; margin-inline: auto; }
+.ap-title { font-family: var(--serif); font-weight: 600; font-size: var(--fs-title); margin: 0; text-wrap: balance; line-height: 1.15; }
+.ap-take { margin: var(--gap-sm) 0 0; }
+.ap-meta { margin: var(--gap-xs) 0 0; color: var(--muted); font-size: var(--fs-cap); display: flex; gap: var(--gap-sm); align-items: center; flex-wrap: wrap; }
+.ap-live { display: inline-flex; align-items: center; gap: 6px; }
+.ap-live i { width: .5rem; height: .5rem; border-radius: 50%; background: var(--muted); }
+.ap-live.on i { background: #2fa36b; }
+.ap-live.err i { background: var(--lula); }
+.ap-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--pad); min-width: 0; }
+.ap-h2 { margin: 0 0 var(--gap-sm); font-size: var(--fs-head); font-weight: 600; }
+.ap-note { margin: 0 0 var(--gap-md); color: var(--muted); font-size: var(--fs-cap); }
+.ap-cands { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap-md); }
+.ap-cand { display: grid; gap: var(--gap-xs); align-content: start; border-top: 4px solid var(--c); padding-top: var(--gap-sm); }
+#lula { --c: var(--lula); } #flavio { --c: var(--flavio); }
+.ap-num { display: inline-flex; align-items: center; justify-content: center; min-width: 2rem; padding: 0 6px; border-radius: 6px; background: var(--c); color: #fff; font-size: var(--fs-cap); font-weight: 600; }
+.ap-name { font-size: var(--fs-head); font-weight: 600; display: flex; gap: var(--gap-sm); align-items: center; flex-wrap: wrap; }
+.ap-party, .ap-t1 { color: var(--muted); font-size: var(--fs-cap); }
+.ap-big { font-family: var(--serif); font-size: 2.6rem; line-height: 1.05; }
+.num { font-variant-numeric: tabular-nums; }
+.ap-split-wrap { position: relative; padding-top: 4px; margin-top: var(--gap-md); }
+.ap-split { display: flex; height: 1.25rem; border-radius: 999px; overflow: hidden; background: var(--grid); }
+.ap-split span { height: 100%; transition: width .6s ease-out; }
+.ap-split .l { background: var(--lula); } .ap-split .f { background: var(--flavio); margin-left: auto; }
+.ap-half { position: absolute; left: 50%; top: 0; bottom: -4px; width: 2px; background: var(--ref); }
+.ap-split-legend { display: flex; justify-content: space-between; color: var(--muted); font-size: var(--fs-cap); margin-top: var(--gap-xs); }
+.ap-row { display: flex; justify-content: space-between; align-items: baseline; gap: var(--gap-sm); flex-wrap: wrap; }
+.ap-pct-big { font-family: var(--serif); font-size: var(--fs-title); }
+.ap-progress { height: .5rem; border-radius: 999px; background: var(--grid); overflow: hidden; margin-top: var(--gap-sm); }
+.ap-progress span { display: block; height: 100%; width: 0; background: var(--fg); transition: width .6s ease-out; }
+.ap-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: var(--gap-md); margin: var(--gap-md) 0 0; }
+.ap-stats div { display: grid; gap: 2px; }
+.ap-stats dt, .ap-stats small { color: var(--muted); font-size: var(--fs-cap); }
+.ap-stats dd { margin: 0; font-size: var(--fs-head); }
+.ap-map-box { position: relative; }
+.ap-map { display: block; width: 100%; max-width: 34rem; margin-inline: auto; height: auto; aspect-ratio: 1000 / 968; }
+.ap-map path { stroke: var(--panel); stroke-width: 1.5; stroke-linejoin: round; cursor: pointer; transition: fill-opacity .6s; fill: var(--grid); }
+.ap-map path:hover, .ap-map path.on { stroke: var(--fg); stroke-width: 2.5; }
+.ap-legend { display: flex; flex-wrap: wrap; gap: var(--gap-sm) var(--gap-md); margin-top: var(--gap-sm); color: var(--muted); font-size: var(--fs-cap); }
+.ap-legend span { display: inline-flex; align-items: center; gap: var(--gap-xs); }
+.ap-legend i { width: .75rem; height: .75rem; border-radius: 3px; }
+.ap-tip { position: absolute; pointer-events: none; background: var(--popover); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 4px 16px rgb(0 0 0 / .15); padding: 6px 10px; font-size: var(--fs-cap); white-space: nowrap; }
+.ap-tip-t { color: var(--muted); margin-bottom: 2px; }
+.ap-tip i { display: inline-block; width: .5rem; height: .5rem; border-radius: 2px; margin-right: 4px; }
+.ap-scroll { overflow-x: auto; }
+.ap-table { width: 100%; border-collapse: collapse; font-size: var(--fs-cap); }
+.ap-table th, .ap-table td { padding: 6px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.ap-table th:first-child, .ap-table td:first-child { text-align: left; white-space: normal; }
+.ap-table th { color: var(--muted); font-weight: 500; }
+.ap-table td.lead { font-weight: 600; color: var(--c); }
+.ap-foot { color: var(--muted); font-size: var(--fs-cap); margin: 0; }
+.ap-foot a { color: inherit; }
+@media (max-width: 26rem) { .ap-big { font-size: 2rem; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main class="ap">
+  <header>
+    <h1 class="ap-title">Presidente · 2º turno 2026</h1>
+    <p class="ap-take" id="resumo">Carregando os números do TSE…</p>
+    <p class="ap-meta"><span class="ap-live" id="live"><i></i><span>Conectando</span></span><span id="gerado"></span></p>
+  </header>
+
+  <section class="ap-card">
+    <div class="ap-cands">
+      <div class="ap-cand" id="lula">
+        <div class="ap-name"><span class="ap-num">13</span> Lula</div>
+        <div class="ap-party">PT · vice Geraldo Alckmin</div>
+        <div class="ap-big num" data-k="pct">—</div>
+        <div class="num"><span data-k="votos">—</span> votos</div>
+        <div class="ap-t1 num">1º turno: <span data-k="t1">—</span></div>
+      </div>
+      <div class="ap-cand" id="flavio">
+        <div class="ap-name"><span class="ap-num">22</span> Flávio Bolsonaro</div>
+        <div class="ap-party">PL · vice Alfredo Gaspar</div>
+        <div class="ap-big num" data-k="pct">—</div>
+        <div class="num"><span data-k="votos">—</span> votos</div>
+        <div class="ap-t1 num">1º turno: <span data-k="t1">—</span></div>
+      </div>
+    </div>
+    <div class="ap-split-wrap">
+      <div class="ap-split" role="img" aria-label="Divisão dos votos válidos"><span class="l"></span><span class="f"></span></div>
+      <div class="ap-half" aria-hidden="true"></div>
+    </div>
+    <div class="ap-split-legend"><span>Votos válidos</span><span>A linha marca 50%</span></div>
+  </section>
+
+  <section class="ap-card">
+    <h2 class="ap-h2">Mapa por estado</h2>
+    <p class="ap-note">A cor mostra quem lidera em cada estado. Quanto mais forte, maior a vantagem. Toque num estado para ver os números.</p>
+    <div class="ap-map-box">
+      <svg class="ap-map" viewBox="0 0 1000 968" role="img" aria-label="Mapa do Brasil por estado"></svg>
+      <div class="ap-tip" hidden></div>
+    </div>
+    <div class="ap-legend">
+      <span><i style="background: var(--lula)"></i>Lula lidera</span>
+      <span><i style="background: var(--flavio)"></i>Flávio lidera</span>
+      <span><i style="background: var(--grid)"></i>Sem votos apurados</span>
+    </div>
+  </section>
+
+  <section class="ap-card">
+    <div class="ap-row">
+      <h2 class="ap-h2">Seções apuradas</h2>
+      <span class="ap-pct-big num" id="secoes">—</span>
+    </div>
+    <div class="ap-progress"><span id="prog"></span></div>
+    <p class="ap-note num" style="margin: var(--gap-xs) 0 0" id="secoes-n">—</p>
+    <dl class="ap-stats num">
+      <div><dt>Comparecimento</dt><dd id="comp">—</dd><small id="comp-p">—</small></div>
+      <div><dt>Abstenção</dt><dd id="abst">—</dd><small id="abst-p">—</small></div>
+      <div><dt>Brancos</dt><dd id="bran">—</dd><small id="bran-p">—</small></div>
+      <div><dt>Nulos</dt><dd id="nulo">—</dd><small id="nulo-p">—</small></div>
+    </dl>
+  </section>
+
+  <section class="ap-card">
+    <h2 class="ap-h2">Por estado</h2>
+    <p class="ap-note">Percentual dos votos válidos em cada estado, do maior eleitorado para o menor. Em destaque, quem lidera.</p>
+    <div class="ap-scroll">
+      <table class="ap-table num">
+        <thead><tr><th>Estado</th><th>Apurado</th><th>Lula</th><th>Flávio</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <p class="ap-foot">Dados oficiais lidos direto do <a href="https://resultados.tse.jus.br/oficial/app/index.html" target="_blank" rel="noopener">TSE</a>, atualizados a cada 30 segundos enquanto a página está aberta. Contorno dos estados: projeto aberto click_that_hood.</p>
+</main>
+
+<script>
+(function () {
+  const ELEICAO = 6258; // 2º turno 2026 (1º turno = 6257)
+  const URL_TSE = (uf) => `https://resultados.tse.jus.br/oficial/ele2026/${ELEICAO}/dados/${uf}/${uf}-c0001-e${String(ELEICAO).padStart(6, '0')}-u.json`;
+  const UFS = { br: 'Brasil', ac: 'Acre', al: 'Alagoas', am: 'Amazonas', ap: 'Amapá', ba: 'Bahia', ce: 'Ceará', df: 'Distrito Federal', es: 'Espírito Santo', go: 'Goiás', ma: 'Maranhão', mg: 'Minas Gerais', ms: 'Mato Grosso do Sul', mt: 'Mato Grosso', pa: 'Pará', pb: 'Paraíba', pe: 'Pernambuco', pi: 'Piauí', pr: 'Paraná', rj: 'Rio de Janeiro', rn: 'Rio Grande do Norte', ro: 'Rondônia', rr: 'Roraima', rs: 'Rio Grande do Sul', sc: 'Santa Catarina', se: 'Sergipe', sp: 'São Paulo', to: 'Tocantins', zz: 'Exterior' };
+  const APELIDO = { '13': 'lula', '22': 'flavio' };
+  const INTERVALO = 30000;
+
+  const fmtN = new Intl.NumberFormat('pt-BR');
+  const fmtP = (x) => (x || 0).toLocaleString('pt-BR', { style: 'percent', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const num = (x) => (x == null || x === '' ? 0 : parseFloat(String(x).replace(',', '.')));
+  const $ = (s, el = document) => el.querySelector(s);
+  const set = (id, t) => { $('#' + id).textContent = t; };
+
+  const estado = { linhas: {}, t1: {}, mapa: [], tipUf: null };
+
+  function linha(uf, d) {
+    const r = { uf: uf.toUpperCase(), nome: UFS[uf], lula_votos: 0, flavio_votos: 0, lula_pct: 0, flavio_pct: 0 };
+    for (const a of d.carg[0].agr) for (const p of a.par) for (const c of p.cand) {
+      const k = APELIDO[c.n];
+      if (k) { r[k + '_votos'] = +c.vap; r[k + '_pct'] = num(c.pvapn) / 100; }
+    }
+    Object.assign(r, {
+      secoes_pct: num(d.s.pstn) / 100, secoes_totalizadas: +d.s.st, secoes_total: +d.s.ts,
+      eleitorado: +d.e.te, eleitorado_apurado: +d.e.est, comparecimento: +d.e.c, abstencao: +d.e.a,
+      brancos: +d.v.vb, nulos: +d.v.tvn, gerado: `${d.dg} ${d.hg}`, finalizado: d.tf === 's',
+    });
+    return r;
+  }
+
+  async function baixar(uf) {
+    const res = await fetch(URL_TSE(uf) + '?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return linha(uf, await res.json());
+  }
+
+  async function atualizar() {
+    const live = $('#live');
+    const res = await Promise.allSettled(Object.keys(UFS).map(baixar));
+    let ok = 0;
+    res.forEach((r) => { if (r.status === 'fulfilled') { estado.linhas[r.value.uf] = r.value; ok++; } });
+    live.className = 'ap-live ' + (ok ? 'on' : 'err');
+    $('span', live).textContent = ok ? 'Ao vivo · conferido às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Sem conexão com o TSE, tentando de novo';
+    desenhar();
+    const br = estado.linhas.BR;
+    if (!(br && br.finalizado)) setTimeout(atualizar, INTERVALO);
+  }
+
+  function desenhar() {
+    const br = estado.linhas.BR;
+    if (!br) return;
+    const cs = getComputedStyle(document.documentElement);
+    const cor = { lula: cs.getPropertyValue('--lula').trim(), flavio: cs.getPropertyValue('--flavio').trim() };
+
+    set('gerado', 'Dados do TSE de ' + br.gerado);
+    for (const k of ['lula', 'flavio']) {
+      const el = $('#' + k);
+      $('[data-k=pct]', el).textContent = fmtP(br[k + '_pct']);
+      $('[data-k=votos]', el).textContent = fmtN.format(br[k + '_votos']);
+      const t1 = estado.t1.BR;
+      $('[data-k=t1]', el).textContent = t1 ? fmtP(t1[k + '_pct']) : '—';
+    }
+    const vv = br.lula_votos + br.flavio_votos;
+    $('.ap-split .l').style.width = (vv ? br.lula_votos / vv * 100 : 0) + '%';
+    $('.ap-split .f').style.width = (vv ? br.flavio_votos / vv * 100 : 0) + '%';
+
+    const d = br.lula_votos - br.flavio_votos;
+    const lider = d > 0 ? 'Lula' : 'Flávio Bolsonaro';
+    let frase;
+    if (br.secoes_totalizadas === 0) frase = 'A apuração começa depois das 17h (Brasília), quando as urnas fecham. Os números aparecem aqui assim que o TSE divulgar.';
+    else if (d === 0) frase = 'Com ' + fmtP(br.secoes_pct) + ' das seções apuradas, os dois estão empatados.';
+    else frase = (br.finalizado ? 'Apuração encerrada. ' + lider + ' venceu' : 'Com ' + fmtP(br.secoes_pct) + ' das seções apuradas, ' + lider + ' lidera')
+      + ' com ' + fmtP(d > 0 ? br.lula_pct : br.flavio_pct) + ' dos votos válidos, ' + fmtN.format(Math.abs(d)) + ' votos à frente.';
+    set('resumo', frase);
+
+    set('secoes', fmtP(br.secoes_pct));
+    $('#prog').style.width = br.secoes_pct * 100 + '%';
+    set('secoes-n', fmtN.format(br.secoes_totalizadas) + ' de ' + fmtN.format(br.secoes_total) + ' seções');
+    const ea = br.eleitorado_apurado, c = br.comparecimento;
+    set('comp', fmtN.format(c)); set('comp-p', ea ? fmtP(c / ea) + ' do eleitorado apurado' : '—');
+    set('abst', fmtN.format(br.abstencao)); set('abst-p', ea ? fmtP(br.abstencao / ea) : '—');
+    set('bran', fmtN.format(br.brancos)); set('bran-p', c ? fmtP(br.brancos / c) + ' de quem votou' : '—');
+    set('nulo', fmtN.format(br.nulos)); set('nulo-p', c ? fmtP(br.nulos / c) : '—');
+
+    // Mapa
+    $('.ap-map').querySelectorAll('path').forEach((el) => {
+      const u = estado.linhas[el.dataset.uf];
+      const tot = u ? u.lula_votos + u.flavio_votos : 0;
+      if (!tot || u.lula_votos === u.flavio_votos) { el.style.fill = ''; el.style.fillOpacity = 1; return; }
+      const lead = u.lula_votos > u.flavio_votos ? 'lula' : 'flavio';
+      el.style.fill = cor[lead];
+      el.style.fillOpacity = 0.3 + 0.7 * Math.min(1, (Math.max(u.lula_votos, u.flavio_votos) / tot - 0.5) / 0.2);
+    });
+    if (estado.tipUf) mostrarDica(estado.tipUf);
+
+    // Tabela
+    const ufs = Object.values(estado.linhas).filter((u) => u.uf !== 'BR').sort((a, b) => b.eleitorado - a.eleitorado);
+    $('#tbody').replaceChildren(...ufs.map((u) => {
+      const tr = document.createElement('tr');
+      const lead = u.lula_votos === u.flavio_votos ? null : u.lula_votos > u.flavio_votos ? 'lula' : 'flavio';
+      [['nome', u.nome], ['s', fmtP(u.secoes_pct)], ['lula', fmtP(u.lula_pct)], ['flavio', fmtP(u.flavio_pct)]].forEach(([k, t]) => {
+        const td = document.createElement('td');
+        td.textContent = t;
+        if (k === lead) { td.className = 'lead'; td.style.setProperty('--c', cor[k]); }
+        tr.appendChild(td);
+      });
+      return tr;
+    }));
+  }
+
+  // Dica do mapa
+  const box = $('.ap-map-box'), tip = $('.ap-tip');
+  function mostrarDica(uf) {
+    const u = estado.linhas[uf], el = box.querySelector(`path[data-uf="${uf}"]`);
+    if (!u || !el) { tip.hidden = true; return; }
+    estado.tipUf = uf;
+    box.querySelectorAll('path.on').forEach((p) => p.classList.remove('on'));
+    el.classList.add('on');
+    const cs = getComputedStyle(document.documentElement);
+    const linhaDica = (k, nome) => {
+      const dv = document.createElement('div'), i = document.createElement('i');
+      i.style.background = cs.getPropertyValue('--' + k);
+      dv.append(i, nome + ' ' + fmtP(u[k + '_pct']));
+      return dv;
+    };
+    const t = document.createElement('div');
+    t.className = 'ap-tip-t';
+    t.textContent = u.nome + ' · ' + fmtP(u.secoes_pct) + ' apurado';
+    tip.replaceChildren(t, linhaDica('lula', 'Lula'), linhaDica('flavio', 'Flávio'));
+    tip.hidden = false;
+    const b = box.getBoundingClientRect(), r = el.getBoundingClientRect();
+    let x = r.left - b.left + r.width / 2 - tip.offsetWidth / 2, y = r.top - b.top - tip.offsetHeight - 6;
+    if (y < 0) y = r.bottom - b.top + 6;
+    tip.style.left = Math.max(0, Math.min(x, b.width - tip.offsetWidth)) + 'px';
+    tip.style.top = y + 'px';
+  }
+  function esconderDica() { tip.hidden = true; estado.tipUf = null; box.querySelectorAll('path.on').forEach((p) => p.classList.remove('on')); }
+  box.addEventListener('click', (e) => { const p = e.target.closest('path[data-uf]'); p ? mostrarDica(p.dataset.uf) : esconderDica(); });
+  box.addEventListener('pointerover', (e) => { const p = e.target.closest('path[data-uf]'); if (p && e.pointerType === 'mouse') mostrarDica(p.dataset.uf); });
+  box.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') esconderDica(); });
+
+  // Arquivos locais: contorno dos estados e 1º turno
+  async function carregarLocais() {
+    try {
+      const mapa = await (await fetch('mapa_estados.json')).json();
+      const NS = 'http://www.w3.org/2000/svg', svg = $('.ap-map');
+      svg.replaceChildren(...mapa.map((m) => { const p = document.createElementNS(NS, 'path'); p.setAttribute('d', m.caminho); p.dataset.uf = m.uf; return p; }));
+    } catch (e) { /* sem mapa, o resto continua */ }
+    try {
+      for (const r of await (await fetch('primeiro_turno.json')).json()) estado.t1[r.uf] = r;
+    } catch (e) { /* sem comparação com o 1º turno */ }
+  }
+
+  carregarLocais().then(() => { desenhar(); atualizar(); });
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', desenhar);
+})();
+</script>
+</body>
+</html>

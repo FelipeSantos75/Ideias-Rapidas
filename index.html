@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ideias Rápidas</title>
+<style>
+:root { --bg: #f3f4f6; --panel: #fff; --fg: #15171c; --muted: #5e6470; --line: #dfe2e8; color-scheme: light; }
+@media (prefers-color-scheme: dark) { :root { --bg: #101217; --panel: #191c23; --fg: #eceef2; --muted: #9aa1ad; --line: #2c3039; color-scheme: dark; } }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; padding: 24px max(16px, env(safe-area-inset-left, 0px)); }
+main { max-width: 40rem; margin-inline: auto; display: grid; gap: 12px; }
+h1 { margin: 0 0 4px; font-size: 1.6rem; }
+p { margin: 0 0 8px; color: var(--muted); }
+a.ideia { display: block; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; color: inherit; text-decoration: none; }
+a.ideia:hover, a.ideia:focus-visible { border-color: var(--fg); }
+a.ideia small { display: block; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Ideias Rápidas</h1>
+  <p>Protótipos pequenos de ideias que surgem longe do PC.</p>
+  <a class="ideia" href="apuracao-2turno-2026/">Apuração 2º turno 2026<small>Resultado ao vivo para presidente, direto do TSE, com mapa por estado.</small></a>
+</main>
+</body>
+</html>
