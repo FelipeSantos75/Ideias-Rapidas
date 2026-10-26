@@ -200,6 +200,24 @@
     </div>
   </section>
 
+  <section class="ap-card" id="brancos-nulos">
+    <h2 class="ap-h2">Brancos e nulos por estado</h2>
+    <p class="ap-cmp-lead" id="bn-frase" data-source="brancos_nulos"><span class="dash-skeleton">—</span></p>
+    <p class="ap-note">Brancos + nulos em % de quem foi votar, para presidente. Mudança em pontos percentuais. Em vermelho: subiu.</p>
+    <div class="ap-scroll">
+      <table class="ap-table ap-btable" id="bn-tabela" data-source="brancos_nulos" data-row-key="uf">
+        <thead><tr>
+          <th data-field="nome">Estado</th>
+          <th data-field="bn_t1">1º turno</th>
+          <th data-field="bn_t2">2º turno</th>
+          <th data-field="variacao">Mudança</th>
+          <th data-field="variacao_votos">Votos ±</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
   <section class="ap-card" id="andamento">
     <div class="ap-row">
       <h2 class="ap-h2">Seções apuradas</h2>
@@ -299,6 +317,25 @@
     },
   });
 
+  dash.calc('brancos_nulos', {
+    inputs: ['apuracao', 'primeiro_turno'],
+    title: 'Brancos e nulos nos dois turnos',
+    description: 'Por estado e no Brasil: brancos e nulos para presidente em % de quem compareceu, em cada turno, a mudança e a variação em votos, separando brancos e nulos.',
+    fn: (apuracao, primeiro_turno) => {
+      const t1 = Object.fromEntries(primeiro_turno.map((r) => [r.uf, r]));
+      return apuracao.filter((r) => t1[r.uf] && r.comparecimento > 0).map((r) => {
+        const a = t1[r.uf];
+        const bn1 = (a.brancos + a.nulos) / a.comparecimento, bn2 = (r.brancos + r.nulos) / r.comparecimento;
+        return {
+          uf: r.uf, nome: r.nome, bn_t1: bn1, bn_t2: bn2, variacao: bn2 - bn1,
+          brancos_variacao: r.brancos / r.comparecimento - a.brancos / a.comparecimento,
+          nulos_variacao: r.nulos / r.comparecimento - a.nulos / a.comparecimento,
+          variacao_votos: (r.brancos + r.nulos) - (a.brancos + a.nulos),
+        };
+      });
+    },
+  });
+
   dash.calc('abstencao', {
     inputs: ['apuracao', 'primeiro_turno'],
     title: 'Abstenção nos dois turnos',
@@ -321,6 +358,7 @@
     lula_pct: fmtP, flavio_pct: fmtP, secoes_pct: fmtP,
     comparecimento_pct: fmtP, abstencao_pct: fmtP, brancos_pct: fmtP, nulos_pct: fmtP,
   };
+  const lista = (xs) => (xs.length > 1 ? xs.slice(0, -1).join(', ') + ' e ' + xs[xs.length - 1] : xs.join(''));
   const fmtS = (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + fmtN.format(Math.abs(v));
   ['lula_ganho', 'flavio_ganho', 'comparecimento_ganho', 'brancos_nulos_variacao'].forEach((k) => { fields[k] = fmtS; });
   const show = (x, f) => (typeof x === 'number' ? (fields[f] || ((v) => fmtN.format(v)))(x) : String(x ?? '—'));
@@ -601,6 +639,34 @@
       td0.textContent = r.nome;
       tr.appendChild(td0);
       [[fmtP(r.abst_t1)], [fmtP(r.abst_t2)], [ppA(r.variacao), r.variacao > 0 ? 'ap-up' : ''], [fmtS(r.flavio_ganho), r.flavio_ganho < 0 ? 'ap-up' : '']].forEach(([t, cl]) => {
+        const td = document.createElement('td');
+        td.textContent = t;
+        if (cl) td.className = cl;
+        tr.appendChild(td);
+      });
+      return tr;
+    }));
+
+    // Brancos e nulos por estado
+    const bnD = dash.data('brancos_nulos');
+    const bn = bnD.status === 'ok' && Array.isArray(bnD.data) ? bnD.data : [];
+    const bnBR = bn.find((r) => r.uf === 'BR');
+    const bnUF = bn.filter((r) => r.uf !== 'BR' && r.uf !== 'ZZ');
+    if (bnBR && bnUF.length) {
+      const sobe = bnUF.filter((r) => r.variacao > 0).sort((x, y) => y.variacao - x.variacao);
+      const cai = bnUF.filter((r) => r.variacao < 0).sort((x, y) => x.variacao - y.variacao).slice(0, 3);
+      const porNulo = sobe.filter((r) => r.nulos_variacao > 0 && r.brancos_variacao <= 0);
+      $('#bn-frase').textContent = 'No país, brancos e nulos ' + (bnBR.variacao < 0 ? 'caíram' : 'subiram') + ' de ' + fmtP(bnBR.bn_t1) + ' para ' + fmtP(bnBR.bn_t2) + ' de quem votou (' + fmtS(bnBR.variacao_votos) + ' votos). '
+        + 'As maiores quedas foram em ' + lista(cai.map((r) => r.nome)) + '. '
+        + (sobe.length ? 'Subiram em ' + sobe.length + ' lugares: ' + lista(sobe.map((r) => r.nome)) + (porNulo.length === sobe.length ? '. Nesses, o aumento veio dos votos nulos; os brancos caíram.' : '.') : 'Não subiram em nenhum estado.');
+    }
+    $('#bn-tabela tbody').replaceChildren(...bn.filter((r) => r.uf !== 'BR').sort((x, y) => y.variacao - x.variacao).map((r) => {
+      const tr = document.createElement('tr');
+      tr.dataset.key = r.uf;
+      const td0 = document.createElement('td');
+      td0.textContent = r.nome;
+      tr.appendChild(td0);
+      [[fmtP(r.bn_t1)], [fmtP(r.bn_t2)], [ppA(r.variacao), r.variacao > 0 ? 'ap-up' : ''], [fmtS(r.variacao_votos), r.variacao_votos > 0 ? 'ap-up' : '']].forEach(([t, cl]) => {
         const td = document.createElement('td');
         td.textContent = t;
         if (cl) td.className = cl;
