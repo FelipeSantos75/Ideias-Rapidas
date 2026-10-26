@@ -88,6 +88,10 @@
 .ap-chip:focus-visible { outline: 2px solid var(--color-fg); outline-offset: 2px; }
 .ap-abs tr.br td { font-weight: var(--cds-font-weight-medium); border-bottom-width: 2px; }
 .ap-pos { font-weight: var(--cds-font-weight-medium); }
+.ap-whatif { border-style: dashed; }
+.ap-sub { display: block; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); font-weight: 400; }
+.ap-tag { display: inline-block; margin-left: var(--cds-gap-xs); padding: 0 6px; border: 1px solid var(--color-border-line); border-radius: 999px; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); font-weight: 400; vertical-align: middle; }
+.ap-caveats { margin: var(--cds-gap-md) 0 0; padding-left: 1.1rem; color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); line-height: 1.5; display: grid; gap: var(--cds-gap-xs); }
 [data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
 @media (max-width: 30rem) { .ap-big { font-size: var(--cds-font-size-title); } }
 </style>
@@ -255,6 +259,27 @@
     </div>
   </section>
 
+  <section class="ap-card ap-whatif" id="e-se">
+    <h2 class="ap-h2">E se? <span class="ap-tag">cenário hipotético</span></h2>
+    <p class="ap-cmp-lead" id="ese-frase" data-source="cenario"><span class="dash-skeleton">—</span></p>
+    <div class="ap-scroll">
+      <table class="ap-table ap-abs" id="ese-tabela" data-source="cenario" data-row-key="item">
+        <thead><tr>
+          <th data-field="nome">Candidato</th>
+          <th data-field="oficial">Oficial</th>
+          <th data-field="cenario">Cenário</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="ap-note" style="margin-top: var(--cds-gap-xs)">Cenário: votos de Lula menos os eleitores a mais que foram votar no 2º turno. Abaixo de cada número, a parte dos votos dos dois.</p>
+    <ul class="ap-caveats">
+      <li>Supõe que todas as pessoas a mais que foram votar no 2º turno votaram em Lula. Nenhum dado mostra isso: onde o comparecimento mais cresceu, como São Paulo, Paraná e Rio Grande do Sul, Flávio também ganhou muitos votos.</li>
+      <li>O número de pessoas a mais é um saldo: muitos que votaram no 1º turno faltaram no 2º, e outros fizeram o contrário. Os dados do TSE não separam essas pessoas.</li>
+      <li>São eleitores do mesmo cadastro dos dois turnos, que não tinham ido votar no 1º. Os votos são válidos.</li>
+    </ul>
+  </section>
+
   <section class="ap-card" id="andamento">
     <div class="ap-row">
       <h2 class="ap-h2">Seções apuradas</h2>
@@ -420,6 +445,22 @@
         ['comparecimento', 'Foram votar', (r) => r.comparecimento], ['abstencao', 'Não foram votar', (r) => r.abstencao], ['eleitorado', 'Eleitorado', (r) => r.eleitorado],
       ];
       return itens.map(([item, nome, f]) => ({ item, nome, t1: f(a), t2: f(b), diferenca: f(b) - f(a) }));
+    },
+  });
+  dash.calc('cenario', {
+    inputs: ['apuracao', 'primeiro_turno'],
+    title: 'Cenário hipotético',
+    description: 'No Brasil: votos de Lula e Flávio no 2º turno e um cenário em que se tiram de Lula todas as pessoas a mais que foram votar no 2º turno (comparecimento do 2º menos o do 1º).',
+    fn: (apuracao, primeiro_turno) => {
+      const a = primeiro_turno.find((r) => r.uf === 'BR'), b = apuracao.find((r) => r.uf === 'BR');
+      if (!a || !b) return [];
+      const novos = b.comparecimento - a.comparecimento;
+      const lula = b.lula_votos - novos, flavio = b.flavio_votos;
+      return [
+        { item: 'lula', nome: 'Lula', oficial: b.lula_votos, cenario: lula, pct_oficial: b.lula_votos / (b.lula_votos + b.flavio_votos), pct_cenario: lula / (lula + flavio), novos },
+        { item: 'flavio', nome: 'Flávio Bolsonaro', oficial: b.flavio_votos, cenario: flavio, pct_oficial: b.flavio_votos / (b.lula_votos + b.flavio_votos), pct_cenario: flavio / (lula + flavio), novos },
+        { item: 'vantagem', nome: 'Vantagem de Lula', oficial: b.lula_votos - b.flavio_votos, cenario: lula - flavio, novos },
+      ];
     },
   });
   let absItem = 'lula';
@@ -819,6 +860,29 @@
       });
     }
     desenharAbs();
+
+    // Cenário hipotético
+    const ceD = dash.data('cenario');
+    const ce = ceD.status === 'ok' && Array.isArray(ceD.data) ? ceD.data : [];
+    const ceV = ce.find((r) => r.item === 'vantagem');
+    if (ceV) {
+      const venceria = ceV.cenario > 0 ? 'Lula' : ceV.cenario < 0 ? 'Flávio Bolsonaro' : 'ninguém (empate)';
+      $('#ese-frase').textContent = 'Se fossem tirados de Lula os ' + fmtN.format(ceV.novos) + ' eleitores a mais que foram votar no 2º turno, ' + venceria + ' venceria'
+        + (ceV.cenario !== 0 ? ', com ' + fmtN.format(Math.abs(ceV.cenario)) + ' votos de vantagem' : '') + '. Para Flávio vencer, seria preciso tirar de Lula mais de ' + fmtN.format(ceV.oficial) + ' votos, a vantagem inteira.';
+    }
+    $('#ese-tabela tbody').replaceChildren(...ce.map((r) => {
+      const tr = document.createElement('tr');
+      tr.dataset.key = r.item;
+      if (r.item === 'vantagem') tr.className = 'br';
+      [[r.nome], [fmtN.format(r.oficial), r.pct_oficial], [fmtN.format(r.cenario), r.pct_cenario]].forEach(([t, pc], i) => {
+        const td = document.createElement('td');
+        td.textContent = t;
+        if (pc != null) { const sm = document.createElement('small'); sm.className = 'ap-sub'; sm.textContent = fmtP(pc); td.appendChild(sm); }
+        if (i > 0 && (r.item === 'lula' || r.item === 'flavio')) { td.className = 'ap-pos'; td.style.color = colors[r.item]; }
+        tr.appendChild(td);
+      });
+      return tr;
+    }));
 
     // Tabela por estado
     const tbody = $('#estados .ap-table tbody');
