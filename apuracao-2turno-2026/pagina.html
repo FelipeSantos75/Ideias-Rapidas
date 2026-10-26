@@ -82,6 +82,12 @@
 .ap-limits { margin: var(--cds-gap-sm) 0 0; color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); line-height: 1.5; }
 .ap-up { color: var(--color-bad); font-weight: var(--cds-font-weight-medium); }
 .ap-badge.sobe { background: var(--color-bad); }
+.ap-chips { display: flex; flex-wrap: wrap; gap: var(--cds-gap-xs); margin: 0 0 var(--cds-gap-md); }
+.ap-chip { font: inherit; font-size: var(--cds-font-size-caption); padding: var(--cds-pad-xs) var(--cds-pad-sm); border-radius: 999px; border: 1px solid var(--color-border-line); background: var(--color-panel); color: var(--color-fg); cursor: pointer; }
+.ap-chip[aria-pressed="true"] { background: var(--color-fg); color: var(--color-bg); border-color: var(--color-fg); }
+.ap-chip:focus-visible { outline: 2px solid var(--color-fg); outline-offset: 2px; }
+.ap-abs tr.br td { font-weight: var(--cds-font-weight-medium); border-bottom-width: 2px; }
+.ap-pos { font-weight: var(--cds-font-weight-medium); }
 [data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
 @media (max-width: 30rem) { .ap-big { font-size: var(--cds-font-size-title); } }
 </style>
@@ -218,6 +224,37 @@
     </div>
   </section>
 
+  <section class="ap-card" id="absolutos">
+    <h2 class="ap-h2">Em números absolutos</h2>
+    <p class="ap-note">Quantidade de votos e de eleitores em cada turno, sem percentuais.</p>
+    <h3 class="ap-h2">Brasil</h3>
+    <div class="ap-scroll">
+      <table class="ap-table ap-abs" id="abs-br" data-source="absolutos_br" data-row-key="item">
+        <thead><tr>
+          <th data-field="nome">Item</th>
+          <th data-field="t1">1º turno</th>
+          <th data-field="t2">2º turno</th>
+          <th data-field="diferenca">Diferença</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <h3 class="ap-h2" style="margin-top: var(--cds-gap-lg)">Por estado</h3>
+    <div class="ap-chips" id="abs-chips" role="group" aria-label="Escolha o que comparar"></div>
+    <p class="ap-note" id="abs-nota">—</p>
+    <div class="ap-scroll">
+      <table class="ap-table ap-abs" id="abs-uf" data-source="absolutos" data-row-key="uf">
+        <thead><tr>
+          <th data-field="nome">Estado</th>
+          <th class="abs-th1" data-field="lula_t1">1º turno</th>
+          <th class="abs-th2" data-field="lula_t2">2º turno</th>
+          <th class="abs-thd" data-field="lula_dif">Diferença</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
   <section class="ap-card" id="andamento">
     <div class="ap-row">
       <h2 class="ap-h2">Seções apuradas</h2>
@@ -335,6 +372,88 @@
       });
     },
   });
+
+  // Itens comparados em números absolutos (chave, nome, como calcular a partir de uma linha)
+  const ITENS_ABS = [
+    ['lula', 'Votos de Lula', (r) => r.lula_votos],
+    ['flavio', 'Votos de Flávio', (r) => r.flavio_votos],
+    ['outros', 'Votos em outros candidatos', (r) => r.validos - r.lula_votos - r.flavio_votos],
+    ['validos', 'Votos válidos', (r) => r.validos],
+    ['brancos', 'Brancos', (r) => r.brancos],
+    ['nulos', 'Nulos', (r) => r.nulos],
+    ['comparecimento', 'Foram votar', (r) => r.comparecimento],
+    ['abstencao', 'Não foram votar', (r) => r.abstencao],
+    ['eleitorado', 'Eleitorado', (r) => r.eleitorado],
+  ];
+
+  dash.calc('absolutos', {
+    inputs: ['apuracao', 'primeiro_turno'],
+    title: 'Números absolutos por estado',
+    description: 'Por estado e no Brasil: votos de cada candidato, outros candidatos, válidos, brancos, nulos, comparecimento, abstenção e eleitorado no 1º e no 2º turno, e a diferença.',
+    fn: (apuracao, primeiro_turno) => {
+      const t1 = Object.fromEntries(primeiro_turno.map((r) => [r.uf, r]));
+      const itens = [
+        ['lula', (r) => r.lula_votos], ['flavio', (r) => r.flavio_votos],
+        ['outros', (r) => r.validos - r.lula_votos - r.flavio_votos], ['validos', (r) => r.validos],
+        ['brancos', (r) => r.brancos], ['nulos', (r) => r.nulos],
+        ['comparecimento', (r) => r.comparecimento], ['abstencao', (r) => r.abstencao], ['eleitorado', (r) => r.eleitorado],
+      ];
+      return apuracao.filter((r) => t1[r.uf]).map((r) => {
+        const o = { uf: r.uf, nome: r.nome, eleitorado_ref: r.eleitorado };
+        for (const [k, f] of itens) { const a = f(t1[r.uf]), b = f(r); o[k + '_t1'] = a; o[k + '_t2'] = b; o[k + '_dif'] = b - a; }
+        return o;
+      });
+    },
+  });
+
+  dash.calc('absolutos_br', {
+    inputs: ['apuracao', 'primeiro_turno'],
+    title: 'Brasil em números absolutos',
+    description: 'No Brasil: cada item (votos, brancos, nulos, comparecimento, abstenção) no 1º e no 2º turno e a diferença.',
+    fn: (apuracao, primeiro_turno) => {
+      const a = primeiro_turno.find((r) => r.uf === 'BR'), b = apuracao.find((r) => r.uf === 'BR');
+      if (!a || !b) return [];
+      const itens = [
+        ['lula', 'Votos de Lula', (r) => r.lula_votos], ['flavio', 'Votos de Flávio', (r) => r.flavio_votos],
+        ['outros', 'Votos em outros candidatos', (r) => r.validos - r.lula_votos - r.flavio_votos], ['validos', 'Votos válidos', (r) => r.validos],
+        ['brancos', 'Brancos', (r) => r.brancos], ['nulos', 'Nulos', (r) => r.nulos],
+        ['comparecimento', 'Foram votar', (r) => r.comparecimento], ['abstencao', 'Não foram votar', (r) => r.abstencao], ['eleitorado', 'Eleitorado', (r) => r.eleitorado],
+      ];
+      return itens.map(([item, nome, f]) => ({ item, nome, t1: f(a), t2: f(b), diferenca: f(b) - f(a) }));
+    },
+  });
+  let absItem = 'lula';
+  function desenharAbs() {
+    const d = dash.data('absolutos');
+    const rows = d.status === 'ok' && Array.isArray(d.data) ? d.data : [];
+    const k = absItem, nome = (ITENS_ABS.find((x) => x[0] === k) || [])[1] || '';
+    $('#abs-chips').querySelectorAll('.ap-chip').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.k === k)));
+    $('.abs-th1').dataset.field = k + '_t1'; $('.abs-th2').dataset.field = k + '_t2'; $('.abs-thd').dataset.field = k + '_dif';
+    const br = rows.find((r) => r.uf === 'BR');
+    const ufs = rows.filter((r) => r.uf !== 'BR').sort((x, y) => y[k + '_dif'] - x[k + '_dif']);
+    const subiu = ufs.filter((r) => r[k + '_dif'] > 0).length, caiu = ufs.filter((r) => r[k + '_dif'] < 0).length;
+    $('#abs-nota').textContent = br ? nome + ': ' + fmtN.format(br[k + '_t1']) + ' no 1º turno e ' + fmtN.format(br[k + '_t2']) + ' no 2º (' + fmtS(br[k + '_dif']) + '). Aumentou em ' + subiu + ' e diminuiu em ' + caiu + ' dos 28 lugares (26 estados, Distrito Federal e exterior). Ordem: da maior alta para a maior queda.' : '—';
+    const cor = latest.colors || {};
+    const fmtS2 = (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + fmtN.format(Math.abs(v));
+    $('#abs-uf tbody').replaceChildren(...(br ? [br] : []).concat(ufs).map((r) => {
+      const tr = document.createElement('tr');
+      tr.dataset.key = r.uf;
+      if (r.uf === 'BR') tr.className = 'br';
+      const v = r[k + '_dif'];
+      [[r.nome], [fmtN.format(r[k + '_t1'])], [fmtN.format(r[k + '_t2'])], [fmtS2(v)]].forEach(([t], i) => {
+        const td = document.createElement('td');
+        td.textContent = t;
+        if (i === 3) {
+          td.className = 'ap-pos';
+          if (v && (k === 'lula' || k === 'flavio')) td.style.color = cor[k];
+          else if (v < 0 && k !== 'abstencao' && k !== 'brancos' && k !== 'nulos' && k !== 'outros') td.classList.add('ap-up');
+          else if (v > 0 && (k === 'abstencao' || k === 'brancos' || k === 'nulos')) td.classList.add('ap-up');
+        }
+        tr.appendChild(td);
+      });
+      return tr;
+    }));
+  }
 
   dash.calc('abstencao', {
     inputs: ['apuracao', 'primeiro_turno'],
@@ -674,6 +793,32 @@
       });
       return tr;
     }));
+
+    // Números absolutos
+    const corDif = (k, v) => (v === 0 ? '' : k === 'lula' ? colors.lula : k === 'flavio' ? colors.flavio : '');
+    const absBrD = dash.data('absolutos_br');
+    const absBr = absBrD.status === 'ok' && Array.isArray(absBrD.data) ? absBrD.data : [];
+    $('#abs-br tbody').replaceChildren(...absBr.map((r) => {
+      const tr = document.createElement('tr');
+      tr.dataset.key = r.item;
+      [[r.nome], [fmtN.format(r.t1)], [fmtN.format(r.t2)], [fmtS(r.diferenca), corDif(r.item, r.diferenca)]].forEach(([t, c], i) => {
+        const td = document.createElement('td');
+        td.textContent = t;
+        if (i === 3) { td.className = 'ap-pos'; if (c) td.style.color = c; }
+        tr.appendChild(td);
+      });
+      return tr;
+    }));
+    const chips = $('#abs-chips');
+    if (!chips.childElementCount) {
+      ITENS_ABS.filter(([k]) => k !== 'eleitorado').forEach(([k, nome]) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'ap-chip'; b.dataset.k = k; b.textContent = nome;
+        b.addEventListener('click', () => { absItem = k; desenharAbs(); });
+        chips.appendChild(b);
+      });
+    }
+    desenharAbs();
 
     // Tabela por estado
     const tbody = $('#estados .ap-table tbody');
