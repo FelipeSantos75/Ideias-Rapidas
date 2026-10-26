@@ -61,6 +61,17 @@
   .ap-next.buscando svg { animation: ap-pulso 1.2s var(--cds-ease-out) infinite; }
 }
 @keyframes ap-pulso { 50% { opacity: .35; } }
+.ap-cmp-lead { margin: 0 0 var(--cds-gap-md); line-height: 1.5; }
+.ap-flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: var(--cds-gap-md); margin: 0 0 var(--cds-gap-lg); }
+.ap-flow div { display: grid; gap: 2px; }
+.ap-flow dt { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+.ap-flow dd { margin: 0; font-size: var(--cds-font-size-heading); font-variant-numeric: tabular-nums; }
+.ap-map2 text { font-size: 22px; font-weight: 600; fill: var(--color-fg); paint-order: stroke; stroke: var(--color-panel); stroke-width: 5px; pointer-events: none; }
+.ap-map2 path.virou { stroke: var(--color-fg); stroke-width: 4; }
+.ap-ramp { display: flex; align-items: center; gap: var(--cds-gap-sm); }
+.ap-ramp b { display: inline-block; width: 5rem; height: .6rem; border-radius: 999px; }
+.ap-badge { display: inline-block; margin-left: var(--cds-gap-xs); padding: 0 6px; border-radius: 999px; background: var(--color-fg); color: var(--color-bg); font-size: var(--cds-font-size-caption); font-weight: var(--cds-font-weight-medium); }
+.ap-ctable tr.virou td { font-weight: var(--cds-font-weight-medium); }
 [data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
 @media (max-width: 30rem) { .ap-big { font-size: var(--cds-font-size-title); } }
 </style>
@@ -113,6 +124,37 @@
       <span><i class="ap-sw-l"></i>Lula lidera</span>
       <span><i class="ap-sw-f"></i>Flávio lidera</span>
       <span><i style="background: var(--cds-chart-grid)"></i>Sem votos apurados</span>
+    </div>
+  </section>
+
+  <section class="ap-card" id="comparacao">
+    <h2 class="ap-h2">1º turno × 2º turno</h2>
+    <p class="ap-cmp-lead" id="cmp-frase" data-source="comparacao"><span class="dash-skeleton">—</span></p>
+    <dl class="ap-flow">
+      <div><dt>Lula ganhou</dt><dd data-source="origem" data-field="lula_ganho" data-row="0">—</dd></div>
+      <div><dt>Flávio ganhou</dt><dd data-source="origem" data-field="flavio_ganho" data-row="0">—</dd></div>
+      <div><dt>Votos dos outros candidatos no 1º turno</dt><dd data-source="origem" data-field="outros_t1" data-row="0">—</dd></div>
+      <div><dt>Eleitores a mais</dt><dd data-source="origem" data-field="comparecimento_ganho" data-row="0">—</dd></div>
+      <div><dt>Brancos e nulos</dt><dd data-source="origem" data-field="brancos_nulos_variacao" data-row="0">—</dd></div>
+    </dl>
+    <h3 class="ap-h2">Quanto a vantagem mudou em cada estado</h3>
+    <p class="ap-note">Diferença entre os dois, em pontos percentuais, do 1º para o 2º turno. Contorno grosso: o estado mudou de líder.</p>
+    <div class="ap-map-box" data-source="comparacao mapa_estados">
+      <svg class="ap-map ap-map2" role="img" aria-label="Mapa da mudança de vantagem por estado"></svg>
+    </div>
+    <div class="ap-legend">
+      <span class="ap-ramp">Menos <b class="ap-ramp-l"></b> Mais a favor de Lula</span>
+    </div>
+    <div class="ap-scroll" style="margin-top: var(--cds-gap-md)">
+      <table class="ap-table ap-ctable" id="cmp-tabela" data-source="comparacao" data-row-key="uf">
+        <thead><tr>
+          <th data-field="nome">Estado</th>
+          <th data-field="margem_t1">1º turno</th>
+          <th data-field="margem_t2">2º turno</th>
+          <th data-field="variacao">Mudança</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
     </div>
   </section>
 
@@ -177,10 +219,47 @@
     },
   });
 
+  dash.calc('comparacao', {
+    inputs: ['apuracao', 'primeiro_turno'],
+    title: 'Mudança do 1º para o 2º turno',
+    description: 'Por estado: vantagem de Lula sobre Flávio (pontos percentuais dos votos válidos) em cada turno, a mudança entre eles e se o líder mudou.',
+    fn: (apuracao, primeiro_turno) => {
+      const t1 = Object.fromEntries(primeiro_turno.map((r) => [r.uf, r]));
+      return apuracao.filter((r) => t1[r.uf] && r.lula_votos + r.flavio_votos > 0).map((r) => {
+        const a = t1[r.uf];
+        const m1 = a.lula_pct - a.flavio_pct, m2 = r.lula_pct - r.flavio_pct;
+        return {
+          uf: r.uf, nome: r.nome, margem_t1: m1, margem_t2: m2, variacao: m2 - m1,
+          lider_t1: m1 > 0 ? 'Lula' : 'Flávio', lider_t2: m2 > 0 ? 'Lula' : 'Flávio',
+          virou: (m1 > 0) !== (m2 > 0),
+        };
+      });
+    },
+  });
+
+  dash.calc('origem', {
+    inputs: ['apuracao', 'primeiro_turno'],
+    title: 'De onde vieram os votos',
+    description: 'No Brasil: votos que cada um ganhou do 1º para o 2º turno, votos dos outros candidatos no 1º turno, eleitores a mais e variação de brancos e nulos.',
+    fn: (apuracao, primeiro_turno) => {
+      const b = apuracao.find((r) => r.uf === 'BR'), a = primeiro_turno.find((r) => r.uf === 'BR');
+      if (!b || !a) return [];
+      return [{
+        lula_ganho: b.lula_votos - a.lula_votos,
+        flavio_ganho: b.flavio_votos - a.flavio_votos,
+        outros_t1: a.validos - a.lula_votos - a.flavio_votos,
+        comparecimento_ganho: b.comparecimento - a.comparecimento,
+        brancos_nulos_variacao: (b.brancos + b.nulos) - (a.brancos + a.nulos),
+      }];
+    },
+  });
+
   const fields = {
     lula_pct: fmtP, flavio_pct: fmtP, secoes_pct: fmtP,
     comparecimento_pct: fmtP, abstencao_pct: fmtP, brancos_pct: fmtP, nulos_pct: fmtP,
   };
+  const fmtS = (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + fmtN.format(Math.abs(v));
+  ['lula_ganho', 'flavio_ganho', 'comparecimento_ganho', 'brancos_nulos_variacao'].forEach((k) => { fields[k] = fmtS; });
   const show = (x, f) => (typeof x === 'number' ? (fields[f] || ((v) => fmtN.format(v)))(x) : String(x ?? '—'));
 
   function fillMarks(id, rows) {
@@ -345,8 +424,77 @@
       svg.replaceChildren();
     }
 
+    // Comparação 1º × 2º turno
+    const cmpD = dash.data('comparacao'), ori = dash.data('origem');
+    const cmp = cmpD.status === 'ok' && Array.isArray(cmpD.data) ? cmpD.data : [];
+    fillMarks('origem', ori.status === 'ok' && Array.isArray(ori.data) ? ori.data : []);
+    const casas = (v) => (Math.abs(v) * 100 < 0.1 ? 2 : 1);
+    const vant = (m) => (m === 0 ? 'Empate' : (m > 0 ? 'Lula' : 'Flávio') + ' +' + (Math.abs(m) * 100).toLocaleString('pt-BR', { minimumFractionDigits: casas(m), maximumFractionDigits: casas(m) }));
+    const pp = (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + (Math.abs(v) * 100).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' p.p.';
+    const brC = cmp.find((r) => r.uf === 'BR');
+    const frase = $('#cmp-frase');
+    if (brC) {
+      const viradas = cmp.filter((r) => r.virou && r.uf !== 'BR' && r.uf !== 'ZZ');
+      frase.textContent = (brC.virou ? 'Houve virada no país: no 1º turno ' + brC.lider_t1 + ' liderava por ' + vant(brC.margem_t1).split('+')[1] + ' pontos; no 2º, ' + brC.lider_t2 + ' ficou ' + vant(brC.margem_t2).split('+')[1] + ' pontos à frente.'
+        : brC.lider_t2 + ' liderou nos dois turnos.')
+        + (viradas.length ? ' ' + (viradas.length === 1 ? 'Só um estado mudou de líder: ' : viradas.length + ' estados mudaram de líder: ') + viradas.map((r) => r.nome + ' (' + r.lider_t1 + ' → ' + r.lider_t2 + ')').join(', ') + '.' : ' Nenhum estado mudou de líder.');
+    } else {
+      frase.textContent = '—';
+    }
+    const svg2 = $('.ap-map2');
+    if (shapes.length && cmp.length) {
+      svg2.setAttribute('viewBox', '0 0 ' + shapes[0].largura + ' ' + shapes[0].altura);
+      const byUf2 = Object.fromEntries(cmp.map((r) => [r.uf, r]));
+      const NS = 'http://www.w3.org/2000/svg';
+      const ramp = $('.ap-ramp-l');
+      ramp.style.background = 'linear-gradient(90deg, color-mix(in srgb, ' + colors.lula + ' 15%, transparent), ' + colors.lula + ')';
+      const vs = cmp.filter((r) => r.uf !== 'BR').map((r) => Math.abs(r.variacao));
+      const minV = Math.min(...vs), maxV = Math.max(...vs);
+      svg2.replaceChildren(...shapes.map((sh) => {
+        const el = document.createElementNS(NS, 'path');
+        el.setAttribute('d', sh.caminho);
+        const r = byUf2[sh.uf];
+        if (r) {
+          el.style.fill = r.variacao >= 0 ? colors.lula : colors.flavio;
+          el.style.fillOpacity = 0.15 + 0.85 * (maxV > minV ? (Math.abs(r.variacao) - minV) / (maxV - minV) : 1);
+          if (r.virou) el.classList.add('virou');
+        } else {
+          el.style.fill = 'var(--cds-chart-grid)';
+        }
+        return el;
+      }));
+      // rótulo nos estados que viraram
+      svg2.querySelectorAll('path.virou').forEach((el) => {
+        const bb = el.getBBox();
+        const t = document.createElementNS(NS, 'text');
+        t.setAttribute('x', bb.x + bb.width / 2); t.setAttribute('y', bb.y + bb.height / 2);
+        t.setAttribute('text-anchor', 'middle'); t.setAttribute('dominant-baseline', 'middle');
+        t.textContent = 'Virou';
+        svg2.appendChild(t);
+      });
+    } else {
+      svg2.replaceChildren();
+    }
+    const ctb = $('#cmp-tabela tbody');
+    ctb.replaceChildren(...cmp.filter((r) => r.uf !== 'BR').sort((x, y) => y.variacao - x.variacao).map((r) => {
+      const tr = document.createElement('tr');
+      tr.dataset.key = r.uf;
+      if (r.virou) tr.className = 'virou';
+      const td0 = document.createElement('td');
+      td0.textContent = r.nome;
+      if (r.virou) { const b = document.createElement('span'); b.className = 'ap-badge'; b.textContent = 'virou'; td0.appendChild(b); }
+      tr.appendChild(td0);
+      [[vant(r.margem_t1), r.margem_t1], [vant(r.margem_t2), r.margem_t2], [pp(r.variacao), null]].forEach(([t, m]) => {
+        const td = document.createElement('td');
+        td.textContent = t;
+        if (m !== null && m !== 0) { td.className = 'ap-lead'; td.style.setProperty('--c', m > 0 ? colors.lula : colors.flavio); }
+        tr.appendChild(td);
+      });
+      return tr;
+    }));
+
     // Tabela por estado
-    const tbody = $('.ap-table tbody');
+    const tbody = $('#estados .ap-table tbody');
     const ufs = rows.filter((x) => x.uf !== 'BR').sort((x, y) => y.eleitorado - x.eleitorado);
     tbody.replaceChildren(...ufs.map((u) => {
       const tr = document.createElement('tr');

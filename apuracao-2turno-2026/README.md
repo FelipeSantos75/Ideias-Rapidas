@@ -20,3 +20,4 @@ Versão painel (artefato do Claude):
 ## Próximos passos
 - ~~Mapa por estado~~ (feito: Lula em vermelho, Flávio em azul).
 - Gráfico da evolução do placar ao longo da apuração.
+- ~~Comparação 1º × 2º turno~~ (feito: mapa da mudança por estado, viradas em destaque).
