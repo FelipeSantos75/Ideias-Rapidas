@@ -72,6 +72,16 @@
 .ap-ramp b { display: inline-block; width: 5rem; height: .6rem; border-radius: 999px; }
 .ap-badge { display: inline-block; margin-left: var(--cds-gap-xs); padding: 0 6px; border-radius: 999px; background: var(--color-fg); color: var(--color-bg); font-size: var(--cds-font-size-caption); font-weight: var(--cds-font-weight-medium); }
 .ap-ctable tr.virou td { font-weight: var(--cds-font-weight-medium); }
+.ap-stack { display: flex; height: 1.5rem; border-radius: var(--cds-radius); overflow: hidden; background: var(--cds-chart-grid); margin-top: var(--cds-gap-xs); }
+.ap-stack span { height: 100%; min-width: 2px; }
+.ap-stack-row { display: grid; gap: 2px; margin-bottom: var(--cds-gap-md); }
+.ap-stack-cap { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+.ap-keys { display: flex; flex-wrap: wrap; gap: var(--cds-gap-xs) var(--cds-gap-md); font-size: var(--cds-font-size-caption); font-variant-numeric: tabular-nums; }
+.ap-keys span { display: inline-flex; align-items: center; gap: var(--cds-gap-xs); }
+.ap-keys i { display: inline-block; width: .7rem; height: .7rem; border-radius: 3px; }
+.ap-limits { margin: var(--cds-gap-sm) 0 0; color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); line-height: 1.5; }
+.ap-up { color: var(--color-bad); font-weight: var(--cds-font-weight-medium); }
+.ap-badge.sobe { background: var(--color-bad); }
 [data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
 @media (max-width: 30rem) { .ap-big { font-size: var(--cds-font-size-title); } }
 </style>
@@ -152,6 +162,38 @@
           <th data-field="margem_t1">1º turno</th>
           <th data-field="margem_t2">2º turno</th>
           <th data-field="variacao">Mudança</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="ap-card" id="origem-votos">
+    <h2 class="ap-h2">De onde vieram os votos a mais</h2>
+    <p class="ap-cmp-lead" id="orig-frase" data-source="origem"><span class="dash-skeleton">—</span></p>
+    <div class="ap-stack-row" data-source="origem">
+      <span class="ap-stack-cap">De onde vieram</span>
+      <div class="ap-stack" id="stack-fonte" role="img" aria-label="Fontes dos votos a mais"></div>
+      <div class="ap-keys" id="keys-fonte"></div>
+    </div>
+    <div class="ap-stack-row" data-source="origem">
+      <span class="ap-stack-cap">Para quem foram</span>
+      <div class="ap-stack" id="stack-destino" role="img" aria-label="Divisão dos votos a mais entre os candidatos"></div>
+      <div class="ap-keys" id="keys-destino"></div>
+    </div>
+    <p class="ap-limits">Os dados do TSE são totais por lugar, não por pessoa. Por isso a conta mostra o saldo: dá para saber quantos votos entraram de cada fonte, mas não exatamente quem votou em quem. Parte dos eleitores de um turno também pode ter faltado no outro e vice-versa.</p>
+
+    <h3 class="ap-h2" style="margin-top: var(--cds-gap-lg)">Abstenção por estado</h3>
+    <p class="ap-note" id="abst-frase" data-source="abstencao">—</p>
+    <p class="ap-note">Abstenção em % do eleitorado; mudança em pontos percentuais. Em vermelho: abstenção subiu ou Flávio perdeu votos.</p>
+    <div class="ap-scroll">
+      <table class="ap-table ap-atable" id="abst-tabela" data-source="abstencao" data-row-key="uf">
+        <thead><tr>
+          <th data-field="nome">Estado</th>
+          <th data-field="abst_t1">1º turno</th>
+          <th data-field="abst_t2">2º turno</th>
+          <th data-field="variacao">Mudança</th>
+          <th data-field="flavio_ganho">Flávio ±</th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -250,7 +292,28 @@
         outros_t1: a.validos - a.lula_votos - a.flavio_votos,
         comparecimento_ganho: b.comparecimento - a.comparecimento,
         brancos_nulos_variacao: (b.brancos + b.nulos) - (a.brancos + a.nulos),
+        total_ganho: (b.lula_votos + b.flavio_votos) - (a.lula_votos + a.flavio_votos),
+        abstencao_t1: a.abstencao / a.eleitorado,
+        abstencao_t2: b.abstencao / b.eleitorado,
       }];
+    },
+  });
+
+  dash.calc('abstencao', {
+    inputs: ['apuracao', 'primeiro_turno'],
+    title: 'Abstenção nos dois turnos',
+    description: 'Por estado: parte do eleitorado que não votou em cada turno, a mudança e quantos votos Flávio ganhou ou perdeu do 1º para o 2º turno.',
+    fn: (apuracao, primeiro_turno) => {
+      const t1 = Object.fromEntries(primeiro_turno.map((r) => [r.uf, r]));
+      return apuracao.filter((r) => t1[r.uf] && r.uf !== 'BR').map((r) => {
+        const a = t1[r.uf];
+        return {
+          uf: r.uf, nome: r.nome,
+          abst_t1: a.abstencao / a.eleitorado, abst_t2: r.abstencao / r.eleitorado,
+          variacao: r.abstencao / r.eleitorado - a.abstencao / a.eleitorado,
+          flavio_ganho: r.flavio_votos - a.flavio_votos,
+        };
+      });
     },
   });
 
@@ -488,6 +551,59 @@
         const td = document.createElement('td');
         td.textContent = t;
         if (m !== null && m !== 0) { td.className = 'ap-lead'; td.style.setProperty('--c', m > 0 ? colors.lula : colors.flavio); }
+        tr.appendChild(td);
+      });
+      return tr;
+    }));
+
+    // De onde vieram os votos
+    const o = ori.status === 'ok' && Array.isArray(ori.data) ? ori.data[0] : null;
+    const mi = (v) => (Math.abs(v) / 1e6).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' mi';
+    const fP0 = (x) => x.toLocaleString('pt-BR', { style: 'percent', maximumFractionDigits: 0 });
+    const stack = (id, keysId, parts) => {
+      const tot = parts.reduce((t, x) => t + Math.max(0, x.v), 0) || 1;
+      $(id).replaceChildren(...parts.map((x) => { const sp = document.createElement('span'); sp.style.background = x.c; sp.style.width = Math.max(0, x.v) / tot * 100 + '%'; return sp; }));
+      $(keysId).replaceChildren(...parts.map((x) => { const sp = document.createElement('span'); const i = document.createElement('i'); i.style.background = x.c; sp.append(i, x.n + ' ' + mi(x.v) + ' (' + fP0(Math.max(0, x.v) / tot) + ')'); return sp; }));
+    };
+    if (o && o.total_ganho > 0) {
+      const cs2 = getComputedStyle(root);
+      const neutro = cs2.getPropertyValue('--color-fg-muted').trim();
+      stack('#stack-fonte', '#keys-fonte', [
+        { n: 'Eleitores dos outros candidatos', v: o.outros_t1, c: 'var(--color-fg)' },
+        { n: 'Menos abstenção', v: o.comparecimento_ganho, c: neutro },
+        { n: 'Menos brancos e nulos', v: -o.brancos_nulos_variacao, c: 'var(--cds-chart-reference)' },
+      ]);
+      stack('#stack-destino', '#keys-destino', [
+        { n: 'Lula', v: o.lula_ganho, c: colors.lula },
+        { n: 'Flávio', v: o.flavio_ganho, c: colors.flavio },
+      ]);
+      $('#orig-frase').textContent = 'Somados, os dois tiveram ' + mi(o.total_ganho) + ' de votos a mais no 2º turno. A maior parte veio de quem votou em outros candidatos no 1º turno (' + fP0(o.outros_t1 / o.total_ganho) + '). '
+        + (o.comparecimento_ganho > 0 ? 'Também foram votar ' + mi(o.comparecimento_ganho) + ' de pessoas a mais: a abstenção caiu de ' + fmtP(o.abstencao_t1) + ' para ' + fmtP(o.abstencao_t2) + '. ' : 'A abstenção subiu de ' + fmtP(o.abstencao_t1) + ' para ' + fmtP(o.abstencao_t2) + '. ')
+        + 'Lula ficou com ' + fP0(o.lula_ganho / o.total_ganho) + ' desse ganho.';
+    }
+
+    // Abstenção por estado
+    const abD = dash.data('abstencao');
+    const ab = abD.status === 'ok' && Array.isArray(abD.data) ? abD.data : [];
+    const subiu = ab.filter((r) => r.variacao > 0 && r.uf !== 'ZZ');
+    const subiuFl = subiu.filter((r) => r.flavio_ganho < 0);
+    if (ab.length) {
+      $('#abst-frase').textContent = subiu.length
+        ? 'A abstenção caiu na maior parte do país, mas subiu em ' + subiu.length + ' estados: ' + subiu.sort((x, y) => y.variacao - x.variacao).map((r) => r.nome).join(', ') + '. '
+          + (subiuFl.length ? 'Em ' + subiuFl.length + ' deles Flávio terminou com menos votos do que no 1º turno.' : '')
+        : 'A abstenção caiu em todos os estados.';
+    }
+    const ppA = (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + (Math.abs(v) * 100).toLocaleString('pt-BR', { minimumFractionDigits: casas(v), maximumFractionDigits: casas(v) });
+    $('#abst-tabela tbody').replaceChildren(...ab.slice().sort((x, y) => y.variacao - x.variacao).map((r) => {
+      const tr = document.createElement('tr');
+      tr.dataset.key = r.uf;
+      const td0 = document.createElement('td');
+      td0.textContent = r.nome;
+      tr.appendChild(td0);
+      [[fmtP(r.abst_t1)], [fmtP(r.abst_t2)], [ppA(r.variacao), r.variacao > 0 ? 'ap-up' : ''], [fmtS(r.flavio_ganho), r.flavio_ganho < 0 ? 'ap-up' : '']].forEach(([t, cl]) => {
+        const td = document.createElement('td');
+        td.textContent = t;
+        if (cl) td.className = cl;
         tr.appendChild(td);
       });
       return tr;
