@@ -245,6 +245,11 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
           <small>Quanto a cor pode variar e ainda contar. 0% aceita só a cor exata; valores maiores pegam tons vizinhos, sombras e bordas suavizadas.</small>
         </div>
         <div class="ctl">
+          <div class="ctl-top"><label for="fx-suave">Suavizar ruído antes</label><output id="fx-suave-v" for="fx-suave"></output></div>
+          <input type="range" id="fx-suave" min="0" max="6" step="1" value="0">
+          <small>Desfoca levemente a imagem antes de procurar a cor. Apaga textura de papel, ruído de JPG e pontinhos, deixando as áreas mais inteiras e com menos furos falsos. Valores altos arredondam cantos finos.</small>
+        </div>
+        <div class="ctl">
           <div class="ctl-top"><label for="fx-int">Intervalo de pontos</label><output id="fx-int-v" for="fx-int"></output></div>
           <input type="range" id="fx-int" min="1" max="30" step="1" value="4">
           <small>Distância entre os pontos tirados do contorno. Menor guarda mais detalhe; maior é mais rápido.</small>
@@ -553,11 +558,11 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   function msg(t, tipo) { const m = $('#fx-msg'); m.textContent = t; m.className = 'vz-msg' + (tipo ? ' ' + tipo : ''); }
 
   // ---------- Controles ----------
-  const vals = { 'fx-tol': (v) => v + '%', 'fx-int': (v) => v + ' px', 'fx-termos': (v) => v, 'fx-min': (v) => v + ' px²', 'fx-qtd': (v) => v + '%' + (st.totBase ? ' · ' + Math.round(st.totBase * v / 100).toLocaleString('pt-BR') + ' de ' + st.totBase.toLocaleString('pt-BR') + ' pontos' : '') };
+  const vals = { 'fx-suave': (v) => (+v === 0 ? 'desligado' : v + ' px'), 'fx-tol': (v) => v + '%', 'fx-int': (v) => v + ' px', 'fx-termos': (v) => v, 'fx-min': (v) => v + ' px²', 'fx-qtd': (v) => v + '%' + (st.totBase ? ' · ' + Math.round(st.totBase * v / 100).toLocaleString('pt-BR') + ' de ' + st.totBase.toLocaleString('pt-BR') + ' pontos' : '') };
   const mostrarVals = () => Object.entries(vals).forEach(([id, f]) => { $('#' + id + '-v').textContent = f($('#' + id).value); });
   let tm = null;
   const agendar = (todo) => { clearTimeout(tm); tm = setTimeout(() => (todo ? calcular() : redesenhar()), 120); };
-  ['fx-tol', 'fx-min'].forEach((id) => $('#' + id).addEventListener('input', () => { mostrarVals(); agendar(true); }));
+  ['fx-tol', 'fx-min', 'fx-suave'].forEach((id) => $('#' + id).addEventListener('input', () => { mostrarVals(); agendar(true); }));
   ['fx-int', 'fx-termos', 'fx-qtd'].forEach((id) => $('#' + id).addEventListener('input', () => { mostrarVals(); agendar(false); }));
   // cada toque tira 20% dos pontos atuais: 1000 → 800 → 640 → …
   $('#fx-menos').addEventListener('click', () => { const q = $('#fx-qtd'); q.value = Math.max(1, Math.round(+q.value * 0.8)); mostrarVals(); redesenhar(); });
@@ -571,7 +576,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
     const r = cv.getBoundingClientRect();
     const x = Math.floor(((e.clientX - r.left) / r.width) * st.w), y = Math.floor(((e.clientY - r.top) / r.height) * st.h);
     if (x < 0 || y < 0 || x >= st.w || y >= st.h) return;
-    const i = (y * st.w + x) * 4, d = st.px.data;
+    const i = (y * st.w + x) * 4, d = imagemBusca().data;
     if (d[i + 3] < 20) { msg('Esse ponto é transparente. Toque numa área com cor.', 'bad'); return; }
     definirCor({ r: d[i], g: d[i + 1], b: d[i + 2] });
   });
@@ -592,6 +597,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
     const bg = base.getContext('2d', { willReadFrequently: true });
     bg.clearRect(0, 0, st.w, st.h); bg.drawImage(img, 0, 0, st.w, st.h);
     st.px = bg.getImageData(0, 0, st.w, st.h);
+    st.suaveCache = {};
     cv.width = st.w; cv.height = st.h;
     st.img = img; st.exemplo = exemplo;
     // cor inicial: no exemplo, o sol; numa imagem nova, o pixel do centro
@@ -606,7 +612,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   function calcular() {
     if (!st.px || !st.cor) return;
     pararAnim();
-    const { w, h } = st, d = st.px.data, c = st.cor;
+    const { w, h } = st, d = imagemBusca().data, c = st.cor;
     const tol = (+$('#fx-tol').value / 100) * 441.673; // distância máxima em RGB (√3·255)
     const t2 = tol * tol;
     const mask = new Uint8Array(w * h);
@@ -653,6 +659,37 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
       furos: comFuros ? acharFuros(lab, w, a.id, a.bb, Math.max(3, minA)) : [],
     })).filter((a) => a.contorno.length >= 3);
     redesenhar();
+  }
+
+  // Imagem usada para achar a cor: a original ou uma versão suavizada (guardada por raio)
+  function imagemBusca() {
+    const r = +$('#fx-suave').value;
+    if (!r || !st.px) return st.px;
+    if (!st.suaveCache[r]) st.suaveCache[r] = suavizar(st.px, r);
+    return st.suaveCache[r];
+  }
+  // Desfoque de caixa separável em 3 passadas (aproxima um desfoque gaussiano), nos canais RGBA
+  function suavizar(img, r) {
+    const { width: w, height: h } = img;
+    let a = new Float32Array(img.data), b = new Float32Array(a.length);
+    const passada = (src, dst, horiz) => {
+      const len = horiz ? w : h, lin = horiz ? h : w, jan = 2 * r + 1;
+      for (let L = 0; L < lin; L++) {
+        for (let ch = 0; ch < 4; ch++) {
+          const idx = (k) => ((horiz ? L * w + k : k * w + L) * 4) + ch;
+          let soma = 0;
+          for (let k = -r; k <= r; k++) soma += src[idx(Math.min(len - 1, Math.max(0, k)))];
+          for (let k = 0; k < len; k++) {
+            dst[idx(k)] = soma / jan;
+            soma += src[idx(Math.min(len - 1, k + r + 1))] - src[idx(Math.max(0, k - r))];
+          }
+        }
+      }
+    };
+    for (let i = 0; i < 3; i++) { passada(a, b, true); passada(b, a, false); }
+    const out = new ImageData(w, h);
+    for (let i = 0; i < a.length; i++) out.data[i] = a[i];
+    return out;
   }
 
   // Furos de uma área: regiões sem a área (vizinhança de 4) dentro da caixa dela que não encostam na borda da caixa.

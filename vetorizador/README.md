@@ -16,6 +16,7 @@ Transformar imagens bitmap (PNG, JPG, WebP, GIF, BMP) em SVG direto no navegador
 ### Linha por série de Fourier
 1. Toque numa cor da imagem (ou escolha no seletor de cor).
 2. **Tolerância de cor:** quanto a cor pode variar e ainda contar (0% = só a cor exata).
+   - **Suavizar ruído antes:** desfoque leve (0–6 px) antes de procurar a cor; tira textura de papel e ruído de JPG. Em imagens escaneadas, use 2 px e baixe a tolerância para ~10%.
 3. **Intervalo de pontos:** distância, em pixels, entre os pontos tirados do contorno.
 4. **Quantidade de pontos:** quanto dos pontos do contorno usar (100% = todos). O botão **Reduzir 20%** tira 20% a cada toque (1000 → 800 → 640…); os termos da série caem na mesma proporção, deixando a linha mais lisa. A linha final (e o SVG) tem exatamente essa quantidade de pontos.
 5. **Termos da série:** quantas frequências usar (−N…N). Poucos termos = linha lisa; muitos = fiel ao contorno.
