@@ -42,6 +42,9 @@ Teste: círculo + retângulo em degradê passaram de 48 caminhos (16 cores) para
 ## Visual
 Segue o design system **Liquid Glass** da conta (https://claude.ai/artifact/4MXM3vL7iBhfxCU9weAxkW): cartões opacos para o conteúdo, vidro translúcido só no que flutua sobre a imagem (etiquetas, puxador, avisos), botões e escolhas em cápsula, interruptores, fonte do sistema e temas claro e escuro pelos tokens.
 
+### Imagens pequenas
+Imagens menores que o **Tamanho para processar** (padrão 1200 px) são ampliadas até ele (no máximo 4×) antes de vetorizar. Em logos pequenos, letras finas e relevos têm poucos pixels e se perdiam. Teste com um logo de 528×156 px: em tamanho original, o texto fino sumia ou virava borrão; ampliado para 1200 px, com a predefinição Logo (8 cores), sai nítido (263 caminhos, 69 KB).
+
 ## Arquivos
 - `conteudo.html` — fonte da página (é o que vai para o artefato do Claude).
 - `index.html` — página completa para o GitHub Pages, gerada com `python3 gerar_index.py`. Não edite à mão.

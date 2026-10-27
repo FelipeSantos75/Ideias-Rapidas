@@ -388,7 +388,7 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
         <div class="ctl">
           <div class="ctl-top"><label for="tamanho">Tamanho para processar</label><output id="tamanho-v" for="tamanho"></output></div>
           <input type="range" id="tamanho" min="200" max="2000" step="100">
-          <small>Maior é mais fiel, porém mais lento. O SVG final pode ser ampliado sem perder qualidade.</small>
+          <small>Maior é mais fiel, porém mais lento. Imagens pequenas são ampliadas até esse tamanho (até 4×) antes de vetorizar, o que ajuda letras finas. O SVG final pode ser ampliado sem perder qualidade.</small>
         </div>
         <label class="chk"><input type="checkbox" id="bordas" checked> <span>Separar cores nas bordas (tira o tom intermediário que nasce entre duas cores, como o laranja entre amarelo e vermelho)</span></label>
         <label class="chk"><input type="checkbox" id="degrade"> <span>Juntar degradês (cada objeto com degradê vira uma forma só, em cor chapada)</span></label>
@@ -556,7 +556,7 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
 (function () {
   const $ = (s) => document.querySelector(s);
   const PRESETS = {
-    logo:        { nome: 'Logo / ícone',   cores: 6,  detalhe: 7, manchas: 8,  desfoque: 0, cantos: true,  fundo: false },
+    logo:        { nome: 'Logo / ícone',   cores: 8,  detalhe: 7, manchas: 8,  desfoque: 0, cantos: true,  fundo: false },
     ilustracao:  { nome: 'Ilustração',     cores: 16, detalhe: 6, manchas: 8,  desfoque: 0, cantos: false, fundo: false },
     foto:        { nome: 'Foto',           cores: 32, detalhe: 4, manchas: 16, desfoque: 2, cantos: false, fundo: false },
     pb:          { nome: 'Preto e branco', cores: 2,  detalhe: 7, manchas: 8,  desfoque: 0, cantos: true,  fundo: false },
@@ -591,7 +591,7 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
   $('#degrade-preenche').addEventListener('change', () => agendar());
   $('#bordas').addEventListener('change', () => agendar());
   mostrarDegrade();
-  $('#tamanho').value = 800;
+  $('#tamanho').value = 1200;
 
   // ---------- Entrada de imagem ----------
   const inp = $('#arquivo'), drop = $('#drop');
@@ -650,10 +650,13 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
       const t0 = performance.now();
       const max = +$('#tamanho').value;
       const w0 = st.img.naturalWidth, h0 = st.img.naturalHeight;
-      const k = Math.min(1, max / Math.max(w0, h0));
+      // imagens grandes são reduzidas e as pequenas ampliadas (até 4×) para o "Tamanho para processar":
+      // em logos pequenos, letras finas e relevos ficam com poucos pixels e se perdem sem ampliar
+      const k = Math.min(4, max / Math.max(w0, h0));
       const w = Math.max(1, Math.round(w0 * k)), h = Math.max(1, Math.round(h0 * k));
       const c = document.createElement('canvas'); c.width = w; c.height = h;
       const g = c.getContext('2d', { willReadFrequently: true });
+      g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
       g.drawImage(st.img, 0, 0, w, h);
       let imgd = g.getImageData(0, 0, w, h);
       if ($('#bordas').checked && !$('#degrade').checked) { imgd = separarBordas(imgd, 60, 2, 2); imgd = separarBordas(imgd, 80, 2, 3); }
