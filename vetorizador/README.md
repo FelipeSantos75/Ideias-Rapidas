@@ -25,6 +25,9 @@ Transformar imagens bitmap (PNG, JPG, WebP, GIF, BMP) em SVG direto no navegador
 7. **Curvas Bézier:** cada trecho entre dois pontos (de A até B) é uma curva cúbica de Bézier, não uma reta. As alças vêm da derivada da própria série, z'(t) = Σ 2πi·n·cₙ·e^(2πi·n·t): P1 = A + z'(t₀)·Δt/3 e P2 = B − z'(t₁)·Δt/3. Assim as curvas emendam sem quina e ficam fiéis à série mesmo com poucos pontos. Dá para ver as alças e desligar (volta a retas). O SVG usa comandos `C`.
 8. **Furos:** áreas sem a cor totalmente cercadas pela área (o miolo de um "O", por exemplo) viram contornos internos, em laranja, com série de Fourier própria. No SVG ficam como subcaminhos do mesmo caminho (`fill-rule="evenodd"`).
 
+## Visual
+Segue o design system **Liquid Glass** da conta (https://claude.ai/artifact/4MXM3vL7iBhfxCU9weAxkW): cartões opacos para o conteúdo, vidro translúcido só no que flutua sobre a imagem (etiquetas, puxador, avisos), botões e escolhas em cápsula, interruptores, fonte do sistema e temas claro e escuro pelos tokens.
+
 ## Arquivos
 - `conteudo.html` — fonte da página (é o que vai para o artefato do Claude).
 - `index.html` — página completa para o GitHub Pages, gerada com `python3 gerar_index.py`. Não edite à mão.
