@@ -25,6 +25,10 @@ Transformar imagens bitmap (PNG, JPG, WebP, GIF, BMP) em SVG direto no navegador
 7. **Curvas Bézier:** cada trecho entre dois pontos (de A até B) é uma curva cúbica de Bézier, não uma reta. As alças vêm da derivada da própria série, z'(t) = Σ 2πi·n·cₙ·e^(2πi·n·t): P1 = A + z'(t₀)·Δt/3 e P2 = B − z'(t₁)·Δt/3. Assim as curvas emendam sem quina e ficam fiéis à série mesmo com poucos pontos. Dá para ver as alças e desligar (volta a retas). O SVG usa comandos `C`.
 8. **Furos:** áreas sem a cor totalmente cercadas pela área (o miolo de um "O", por exemplo) viram contornos internos, em laranja, com série de Fourier própria. No SVG ficam como subcaminhos do mesmo caminho (`fill-rule="evenodd"`).
 
+### Separar cores nas bordas
+Ligado por padrão. Na borda entre duas cores, o serrilhado e a suavização criam pixels de mistura (laranja entre amarelo e vermelho), que viravam um objeto à parte. Para cada pixel, a página acha na janela 5×5 as duas cores mais diferentes; se o pixel for uma mistura delas (perto da reta entre as duas cores), ele passa para a cor pura mais próxima. Degradês suaves e terceiras cores de verdade ficam como estão. Cores praticamente iguais da paleta também são juntadas, para não picotar a mesma área.
+Teste (amarelo sobre vermelho com borda suave): sem separar, a paleta ganhava um laranja e as formas um contorno laranja; com a separação, só vermelho, amarelo e branco, 15 caminhos e 3,7 KB.
+
 ### Juntar degradês
 Com o interruptor **Juntar degradês**, cada objeto com degradê (um círculo do vermelho claro ao escuro, por exemplo) vira **uma forma só, em cor chapada** (a cor média do objeto), em vez de dezenas de faixas. A opção **Preencher com o degradê** (desligada por padrão) troca a cor chapada por um `linearGradient`.
 1. A imagem é dividida em regiões que crescem pixel a pixel: o vizinho entra se a cor mudar pouco em relação a ele (**Tolerância do degradê**, padrão 6) e não se afastar demais da cor média da região.

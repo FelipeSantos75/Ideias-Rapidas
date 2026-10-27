@@ -390,6 +390,7 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
           <input type="range" id="tamanho" min="200" max="2000" step="100">
           <small>Maior é mais fiel, porém mais lento. O SVG final pode ser ampliado sem perder qualidade.</small>
         </div>
+        <label class="chk"><input type="checkbox" id="bordas" checked> <span>Separar cores nas bordas (tira o tom intermediário que nasce entre duas cores, como o laranja entre amarelo e vermelho)</span></label>
         <label class="chk"><input type="checkbox" id="degrade"> <span>Juntar degradês (cada objeto com degradê vira uma forma só, em cor chapada)</span></label>
         <div class="ctl" id="degrade-ctl" hidden>
           <div class="ctl-top"><label for="degrade-tol">Tolerância do degradê</label><output id="degrade-tol-v" for="degrade-tol"></output></div>
@@ -588,6 +589,7 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
   $('#degrade').addEventListener('change', () => { mostrarDegrade(); agendar(); });
   $('#degrade-tol').addEventListener('input', () => { mostrarDegrade(); agendar(); });
   $('#degrade-preenche').addEventListener('change', () => agendar());
+  $('#bordas').addEventListener('change', () => agendar());
   mostrarDegrade();
   $('#tamanho').value = 800;
 
@@ -653,7 +655,8 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
       const c = document.createElement('canvas'); c.width = w; c.height = h;
       const g = c.getContext('2d', { willReadFrequently: true });
       g.drawImage(st.img, 0, 0, w, h);
-      const imgd = g.getImageData(0, 0, w, h);
+      let imgd = g.getImageData(0, 0, w, h);
+      if ($('#bordas').checked && !$('#degrade').checked) imgd = separarBordas(imgd, 60, 2);
       try {
         if ($('#degrade').checked) {
           const r = vetorizarDegrades(imgd);
@@ -702,15 +705,73 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
       cs.push(px[i].slice());
       for (let j = 0; j < px.length; j++) dist[j] = Math.min(dist[j], d2(px[j], cs[cs.length - 1]));
     }
+    let cont = cs.map(() => 0);
     for (let it = 0; it < 8; it++) {
       const acc = cs.map(() => [0, 0, 0, 0, 0]);
       for (const p of px) { let m = 0, md = Infinity; for (let c = 0; c < cs.length; c++) { const d = d2(p, cs[c]); if (d < md) { md = d; m = c; } } const a = acc[m]; a[0] += p[0]; a[1] += p[1]; a[2] += p[2]; a[3] += p[3]; a[4]++; }
       acc.forEach((a, c) => { if (a[4]) cs[c] = [a[0] / a[4], a[1] / a[4], a[2] / a[4], a[3] / a[4]]; });
+      cont = acc.map((a) => a[4]);
     }
-    while (cs.length < k) cs.push(cs[cs.length - 1].slice());
+    // junta cores praticamente iguais (ex.: três vermelhos quase idênticos), que só picotariam a mesma área
+    let fundiu = true;
+    while (fundiu && cs.length > 2) {
+      fundiu = false;
+      for (let i = 0; i < cs.length && !fundiu; i++) for (let j = i + 1; j < cs.length; j++) {
+        if (d2(cs[i], cs[j]) < 18 * 18 || !cont[j]) {
+          const a = cont[i] || 1, b = cont[j] || 0;
+          cs[i] = cs[i].map((v, ch) => (v * a + cs[j][ch] * b) / (a + b)); cont[i] = a + b;
+          cs.splice(j, 1); cont.splice(j, 1); fundiu = true; break;
+        }
+      }
+    }
     return cs.map((c) => ({ r: Math.round(c[0]), g: Math.round(c[1]), b: Math.round(c[2]), a: Math.round(c[3]) }));
   }
 
+
+  // ================= Separar cores nas bordas =================
+  // Na borda entre duas cores, o serrilhado (e a suavização) cria pixels de mistura: entre amarelo e vermelho
+  // aparece laranja, que vira um objeto à parte. Para cada pixel, acha na janela 5×5 as duas cores mais
+  // distantes (a e b). Se elas forem bem diferentes (borda) e o pixel estiver perto da reta entre a e b
+  // (é uma mistura das duas, não uma terceira cor), ele passa para a cor pura mais próxima.
+  // Degradês suaves ficam intactos: numa janela tão pequena a variação fica abaixo do limite.
+  function separarBordas(img, limite, passadas) {
+    const { width: w, height: h } = img;
+    let src = new Uint8ClampedArray(img.data);
+    const L2 = limite * limite;
+    for (let ps = 0; ps < passadas; ps++) {
+      const out = new Uint8ClampedArray(src);
+      let mudou = 0;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const j = (y * w + x) * 4, pr = src[j], pg = src[j + 1], pb = src[j + 2], pa = src[j + 3];
+        const y0 = Math.max(0, y - 2), y1 = Math.min(h - 1, y + 2), x0 = Math.max(0, x - 2), x1 = Math.min(w - 1, x + 2);
+        // a = mais distante do pixel; b = mais distante de a
+        let ia = -1, da = -1;
+        for (let yy = y0; yy <= y1; yy++) for (let xx = x0; xx <= x1; xx++) {
+          const k = (yy * w + xx) * 4, d = (src[k] - pr) ** 2 + (src[k + 1] - pg) ** 2 + (src[k + 2] - pb) ** 2 + (src[k + 3] - pa) ** 2;
+          if (d > da) { da = d; ia = k; }
+        }
+        if (da < L2 / 16) continue;
+        const ar = src[ia], ag = src[ia + 1], ab = src[ia + 2], aa = src[ia + 3];
+        let ib = -1, db = -1;
+        for (let yy = y0; yy <= y1; yy++) for (let xx = x0; xx <= x1; xx++) {
+          const k = (yy * w + xx) * 4, d = (src[k] - ar) ** 2 + (src[k + 1] - ag) ** 2 + (src[k + 2] - ab) ** 2 + (src[k + 3] - aa) ** 2;
+          if (d > db) { db = d; ib = k; }
+        }
+        if (db < L2) continue;
+        const vr = src[ib] - ar, vg = src[ib + 1] - ag, vb = src[ib + 2] - ab, va = src[ib + 3] - aa;
+        const t = ((pr - ar) * vr + (pg - ag) * vg + (pb - ab) * vb + (pa - aa) * va) / db;
+        if (t <= 0.1 || t >= 0.9) continue; // já é uma das cores puras
+        const rr = pr - (ar + t * vr), rg = pg - (ag + t * vg), rb = pb - (ab + t * vb), ra = pa - (aa + t * va);
+        if (rr * rr + rg * rg + rb * rb + ra * ra > 0.06 * db) continue; // não é mistura das duas (é uma terceira cor)
+        const k = t < 0.5 ? ia : ib;
+        out[j] = src[k]; out[j + 1] = src[k + 1]; out[j + 2] = src[k + 2]; out[j + 3] = src[k + 3];
+        mudou++;
+      }
+      src = out;
+      if (!mudou) break;
+    }
+    return new ImageData(src, w, h);
+  }
 
   // ================= Modo "Juntar degradês" =================
   // 1) regiões por crescimento: vizinhos ficam juntos quando a cor muda pouco de um pixel para o outro
@@ -805,7 +866,9 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
   function vetorizarDegrades(imgd0) {
     const { width: w, height: h } = imgd0, N = w * h;
     const raio = Math.max(1, +$('#desfoque').value);
-    const img = desfocar(imgd0, raio), D = img.data;
+    let img = desfocar(imgd0, raio);
+    if ($('#bordas').checked) img = separarBordas(img, Math.max(60, 8 * +$('#degrade-tol').value), 3);
+    const D = img.data;
     const tol = +$('#degrade-tol').value, t2 = tol * tol, lim2 = 150 * 150; // passo local; distância máxima à cor média da região // passo local e distância total máxima ao início
     const lab = new Int32Array(N), fila = new Int32Array(N);
     let nreg = 0;
