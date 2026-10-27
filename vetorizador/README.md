@@ -21,7 +21,8 @@ Transformar imagens bitmap (PNG, JPG, WebP, GIF, BMP) em SVG direto no navegador
 4. **Quantidade de pontos:** quanto dos pontos do contorno usar (100% = todos). O botão **Reduzir 20%** tira 20% a cada toque (1000 → 800 → 640…); os termos da série caem na mesma proporção, deixando a linha mais lisa. A linha final (e o SVG) tem exatamente essa quantidade de pontos.
 5. **Termos da série:** quantas frequências usar (−N…N). Poucos termos = linha lisa; muitos = fiel ao contorno.
 6. Escolha só a maior área ou todas, veja a área encontrada e os pontos, anime os círculos (epiciclos), baixe a linha em SVG ou copie os coeficientes em JSON.
-7. **Furos:** áreas sem a cor totalmente cercadas pela área (o miolo de um "O", por exemplo) viram contornos internos, em laranja, com série de Fourier própria. No SVG ficam como subcaminhos do mesmo caminho (`fill-rule="evenodd"`).
+7. **Curvas Bézier:** cada trecho entre dois pontos (de A até B) é uma curva cúbica de Bézier, não uma reta. As alças vêm da derivada da própria série, z'(t) = Σ 2πi·n·cₙ·e^(2πi·n·t): P1 = A + z'(t₀)·Δt/3 e P2 = B − z'(t₁)·Δt/3. Assim as curvas emendam sem quina e ficam fiéis à série mesmo com poucos pontos. Dá para ver as alças e desligar (volta a retas). O SVG usa comandos `C`.
+8. **Furos:** áreas sem a cor totalmente cercadas pela área (o miolo de um "O", por exemplo) viram contornos internos, em laranja, com série de Fourier própria. No SVG ficam como subcaminhos do mesmo caminho (`fill-rule="evenodd"`).
 
 ## Arquivos
 - `conteudo.html` — fonte da página (é o que vai para o artefato do Claude).
