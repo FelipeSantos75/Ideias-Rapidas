@@ -249,7 +249,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
           <small>Número de pares de círculos (frequências −n…+n). Limitado pela quantidade de pontos.</small>
         </div>
         <div class="ctl">
-          <div class="ctl-top"><label for="fx-min">Ignorar áreas menores que</label><output id="fx-min-v" for="fx-min"></output></div>
+          <div class="ctl-top"><label for="fx-min">Ignorar áreas e furos menores que</label><output id="fx-min-v" for="fx-min"></output></div>
           <input type="range" id="fx-min" min="0" max="2000" step="10" value="40">
         </div>
         <div class="vz-sec">
@@ -261,6 +261,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
         </div>
         <label class="chk"><input type="checkbox" id="fx-mascara" checked> <span>Mostrar a área encontrada</span></label>
         <label class="chk"><input type="checkbox" id="fx-pontos"> <span>Mostrar os pontos amostrados</span></label>
+        <label class="chk"><input type="checkbox" id="fx-furos" checked> <span>Incluir os furos das áreas (contornos internos, em laranja)</span></label>
       </div>
       <div class="vz-board">
         <div class="fx-stage">
@@ -269,6 +270,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
         </div>
         <dl class="vz-stats">
           <div><dt>Áreas</dt><dd id="fx-st-areas">—</dd></div>
+          <div><dt>Furos</dt><dd id="fx-st-furos">—</dd></div>
           <div><dt>Pixels no contorno</dt><dd id="fx-st-contorno">—</dd></div>
           <div><dt>Pontos amostrados</dt><dd id="fx-st-pontos">—</dd></div>
           <div><dt>Termos usados</dt><dd id="fx-st-termos">—</dd></div>
@@ -543,6 +545,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   ['fx-tol', 'fx-min'].forEach((id) => $('#' + id).addEventListener('input', () => { mostrarVals(); agendar(true); }));
   ['fx-int', 'fx-termos'].forEach((id) => $('#' + id).addEventListener('input', () => { mostrarVals(); agendar(false); }));
   ['fx-mascara', 'fx-pontos'].forEach((id) => $('#' + id).addEventListener('change', () => desenhar()));
+  $('#fx-furos').addEventListener('change', () => calcular());
   $('#fx-areas').addEventListener('click', (e) => { const b = e.target.closest('[data-a]'); if (!b) return; st.modo = b.dataset.a; $('#fx-areas').querySelectorAll('.chip').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); calcular(); });
   $('#fx-cor').addEventListener('input', (e) => { const v = e.target.value; definirCor({ r: parseInt(v.slice(1, 3), 16), g: parseInt(v.slice(3, 5), 16), b: parseInt(v.slice(5, 7), 16) }); });
   cv.addEventListener('click', (e) => {
@@ -607,9 +610,11 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
     for (let s0 = 0; s0 < mask.length; s0++) {
       if (!mask[s0] || lab[s0]) continue;
       id++; let ini = 0, fim = 0; fila[fim++] = s0; lab[s0] = id; let n = 0;
+      const bb = { x0: w, y0: h, x1: 0, y1: 0 };
       while (ini < fim) {
         const p = fila[ini++]; n++;
         const x = p % w, y = (p / w) | 0;
+        if (x < bb.x0) bb.x0 = x; if (x > bb.x1) bb.x1 = x; if (y < bb.y0) bb.y0 = y; if (y > bb.y1) bb.y1 = y;
         for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
           if (!dx && !dy) continue;
           const nx = x + dx, ny = y + dy;
@@ -618,13 +623,51 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
           if (mask[q] && !lab[q]) { lab[q] = id; fila[fim++] = q; }
         }
       }
-      areas.push({ id, n, inicio: s0 });
+      areas.push({ id, n, inicio: s0, bb });
     }
     const minA = +$('#fx-min').value;
     let sel = areas.filter((a) => a.n >= Math.max(3, minA)).sort((a, b) => b.n - a.n);
     sel = st.modo === 'maior' ? sel.slice(0, 1) : sel.slice(0, MAX_AREAS);
-    st.areas = sel.map((a) => ({ n: a.n, contorno: contorno(lab, w, h, a.id, a.inicio % w, (a.inicio / w) | 0) })).filter((a) => a.contorno.length >= 3);
+    const comFuros = $('#fx-furos').checked;
+    st.areas = sel.map((a) => ({
+      n: a.n,
+      contorno: contorno(lab, w, h, a.id, a.inicio % w, (a.inicio / w) | 0),
+      furos: comFuros ? acharFuros(lab, w, a.id, a.bb, Math.max(3, minA)) : [],
+    })).filter((a) => a.contorno.length >= 3);
     redesenhar();
+  }
+
+  // Furos de uma área: regiões sem a área (vizinhança de 4) dentro da caixa dela que não encostam na borda da caixa.
+  // Cada furo vira um contorno próprio, traçado pelo mesmo método de Moore.
+  function acharFuros(lab, w, id, bb, minA) {
+    const bw = bb.x1 - bb.x0 + 1, bh = bb.y1 - bb.y0 + 1;
+    if (bw < 3 || bh < 3) return [];
+    const hl = new Int32Array(bw * bh), fila = new Int32Array(bw * bh), out = [];
+    let hid = 0;
+    for (let p0 = 0; p0 < hl.length; p0++) {
+      if (hl[p0]) continue;
+      const gx0 = bb.x0 + (p0 % bw), gy0 = bb.y0 + ((p0 / bw) | 0);
+      if (lab[gy0 * w + gx0] === id) continue;
+      hid++; let ini = 0, fim = 0, n = 0, borda = false;
+      fila[fim++] = p0; hl[p0] = hid;
+      while (ini < fim) {
+        const p = fila[ini++]; n++;
+        const x = p % bw, y = (p / bw) | 0;
+        if (x === 0 || y === 0 || x === bw - 1 || y === bh - 1) borda = true;
+        const viz = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]];
+        for (const [nx, ny] of viz) {
+          if (nx < 0 || ny < 0 || nx >= bw || ny >= bh) continue;
+          const q = ny * bw + nx;
+          if (hl[q] || lab[(bb.y0 + ny) * w + bb.x0 + nx] === id) continue;
+          hl[q] = hid; fila[fim++] = q;
+        }
+      }
+      if (!borda && n >= minA) {
+        const pts = contorno(hl, bw, bh, hid, p0 % bw, (p0 / bw) | 0).map(([x, y]) => [x + bb.x0, y + bb.y0]);
+        if (pts.length >= 3) out.push({ n, contorno: pts });
+      }
+    }
+    return out.sort((a, b) => b.n - a.n);
   }
 
   // Contorno externo pelo método de Moore (sentido horário)
@@ -685,20 +728,28 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
     for (const c of cs) { const a = 2 * Math.PI * c.n * t, ca = Math.cos(a), sa = Math.sin(a); x += c.re * ca - c.im * sa; y += c.re * sa + c.im * ca; }
     return [x, y];
   }
+  // Série de Fourier de um contorno (externo ou furo): pontos amostrados, coeficientes, curva e erro
+  function ajustar(c, passo, Npedido, tot) {
+    const { pontos } = amostrar(c.contorno, passo);
+    const N = Math.max(1, Math.min(Npedido, Math.floor((pontos.length - 1) / 2)));
+    c.pontos = pontos; c.N = N; c.cs = coeficientes(pontos, N);
+    const T = Math.max(400, pontos.length * 2);
+    c.curva = []; for (let k = 0; k < T; k++) c.curva.push(avaliar(c.cs, k / T));
+    for (let k = 0; k < pontos.length; k++) { const p = avaliar(c.cs, k / pontos.length); tot.erroSoma += Math.hypot(p[0] - pontos[k][0], p[1] - pontos[k][1]); tot.erroN++; }
+    tot.C += c.contorno.length; tot.P += pontos.length; tot.N = Math.max(tot.N, N);
+  }
   function redesenhar() {
     pararAnim();
     const passo = +$('#fx-int').value, Npedido = +$('#fx-termos').value;
-    let totC = 0, totP = 0, Nusado = 0, erroSoma = 0, erroN = 0;
+    const tot = { C: 0, P: 0, N: 0, erroSoma: 0, erroN: 0 };
+    let nFuros = 0;
     for (const a of st.areas) {
-      const { pontos } = amostrar(a.contorno, passo);
-      const N = Math.max(1, Math.min(Npedido, Math.floor((pontos.length - 1) / 2)));
-      a.pontos = pontos; a.N = N; a.cs = coeficientes(pontos, N);
-      const T = Math.max(400, pontos.length * 2);
-      a.curva = []; for (let k = 0; k < T; k++) a.curva.push(avaliar(a.cs, k / T));
-      for (let k = 0; k < pontos.length; k++) { const p = avaliar(a.cs, k / pontos.length); erroSoma += Math.hypot(p[0] - pontos[k][0], p[1] - pontos[k][1]); erroN++; }
-      totC += a.contorno.length; totP += pontos.length; Nusado = Math.max(Nusado, N);
+      ajustar(a, passo, Npedido, tot);
+      for (const f of a.furos) { ajustar(f, passo, Npedido, tot); nFuros++; }
     }
+    const totC = tot.C, totP = tot.P, Nusado = tot.N, erroSoma = tot.erroSoma, erroN = tot.erroN;
     $('#fx-st-areas').textContent = st.areas.length.toLocaleString('pt-BR');
+    $('#fx-st-furos').textContent = !st.areas.length ? '—' : $('#fx-furos').checked ? nFuros.toLocaleString('pt-BR') : 'desligado';
     $('#fx-st-contorno').textContent = st.areas.length ? totC.toLocaleString('pt-BR') : '—';
     $('#fx-st-pontos').textContent = st.areas.length ? totP.toLocaleString('pt-BR') : '—';
     $('#fx-st-termos').textContent = st.areas.length ? (2 * Nusado + 1) + ' (N = ' + Nusado + ')' : '—';
@@ -719,18 +770,20 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
     g.globalAlpha = 0.55; g.drawImage(base, 0, 0); g.globalAlpha = 1;
     const lw = Math.max(1.5, Math.max(w, h) / 320);
     if ($('#fx-mascara').checked && st.maskCv) g.drawImage(st.maskCv, 0, 0);
+    const pontos = (ps) => { g.fillStyle = '#ffffff'; for (const p of ps) { g.beginPath(); g.arc(p[0], p[1], lw * 0.9, 0, 7); g.fill(); } g.fillStyle = '#ff008c'; for (const p of ps) { g.beginPath(); g.arc(p[0], p[1], lw * 0.55, 0, 7); g.fill(); } };
     for (const a of st.areas) {
       if (!a.curva) continue;
+      for (const f of a.furos) { if (!f.curva) continue; linha(f.curva, lw, true, '#d9480f'); if ($('#fx-pontos').checked) pontos(f.pontos); }
       if (extra && extra.area === a) continue;
       linha(a.curva, lw, true);
-      if ($('#fx-pontos').checked) { g.fillStyle = '#ffffff'; for (const p of a.pontos) { g.beginPath(); g.arc(p[0], p[1], lw * 0.9, 0, 7); g.fill(); } g.fillStyle = '#ff008c'; for (const p of a.pontos) { g.beginPath(); g.arc(p[0], p[1], lw * 0.55, 0, 7); g.fill(); } }
+      if ($('#fx-pontos').checked) pontos(a.pontos);
     }
     if (extra) extra.desenho(lw);
   }
-  function linha(pts, lw, fechar) {
+  function linha(pts, lw, fechar, corLinha) {
     if (pts.length < 2) return;
     g.lineJoin = 'round'; g.lineCap = 'round';
-    for (const [cor, larg] of [['#ffffff', lw * 2.4], ['#1f47d6', lw]]) {
+    for (const [cor, larg] of [['#ffffff', lw * 2.4], [corLinha || '#1f47d6', lw]]) {
       g.strokeStyle = cor; g.lineWidth = larg; g.beginPath(); g.moveTo(pts[0][0], pts[0][1]);
       for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]);
       if (fechar) g.closePath();
@@ -778,10 +831,12 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 
   // ---------- Saída ----------
   function svgLinha() {
-    const paths = st.areas.map((a) => 'M ' + a.curva.map((p) => p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' L ') + ' Z');
+    // cada área vira um caminho: contorno externo + furos como subcaminhos (fill-rule evenodd mantém os furos vazados se preencher)
+    const sub = (c) => 'M ' + c.curva.map((p) => p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' L ') + ' Z';
+    const paths = st.areas.map((a) => [a, ...a.furos].filter((c) => c.curva).map(sub).join(' '));
     return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + st.w + ' ' + st.h + '" width="' + st.w + '" height="' + st.h + '">'
       + '<!-- Linha por série de Fourier: cor ' + hex(st.cor) + ', tolerância ' + $('#fx-tol').value + '%, intervalo ' + $('#fx-int').value + ' px, N = ' + (st.areas[0] ? st.areas[0].N : 0) + ' -->'
-      + paths.map((d) => '<path d="' + d + '" fill="none" stroke="' + hex(st.cor) + '" stroke-width="2" stroke-linejoin="round"/>').join('') + '</svg>';
+      + paths.map((d) => '<path d="' + d + '" fill="none" fill-rule="evenodd" stroke="' + hex(st.cor) + '" stroke-width="2" stroke-linejoin="round"/>').join('') + '</svg>';
   }
   let downloads = null;
   try { window.claude?.use?.('downloads').then((d) => { downloads = d; }).catch(() => {}); } catch (e) { /* fora do Claude */ }
@@ -804,7 +859,10 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
     const json = JSON.stringify({
       cor: hex(st.cor), tolerancia_pct: +$('#fx-tol').value, intervalo_px: +$('#fx-int').value, largura: st.w, altura: st.h,
       formula: 'z(t) = soma de c_n * exp(2*pi*i*n*t), t de 0 a 1; x = Re(z), y = Im(z)',
-      areas: st.areas.map((a) => ({ pontos: a.pontos.length, N: a.N, coeficientes: a.cs.map((c) => ({ n: c.n, re: +c.re.toFixed(4), im: +c.im.toFixed(4) })) })),
+      areas: st.areas.map((a) => {
+        const coef = (c) => ({ pontos: c.pontos.length, N: c.N, coeficientes: c.cs.map((k) => ({ n: k.n, re: +k.re.toFixed(4), im: +k.im.toFixed(4) })) });
+        return { ...coef(a), furos: a.furos.filter((f) => f.cs).map(coef) };
+      }),
     }, null, 1);
     const fb = () => { const t = $('#fx-codigo'); t.value = json; t.hidden = false; t.focus(); t.select(); msg('Não deu para copiar sozinho. Os coeficientes estão selecionados abaixo: copie com Ctrl+C.'); };
     try { navigator.clipboard.writeText(json).then(() => msg('Coeficientes copiados (JSON).', 'ok'), fb); } catch (e) { fb(); }
