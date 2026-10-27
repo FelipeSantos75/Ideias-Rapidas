@@ -10,7 +10,7 @@ Transformar imagens bitmap (PNG, JPG, WebP, GIF, BMP) em SVG direto no navegador
 1. Escolha, arraste ou cole (Ctrl+V) uma imagem. Abre com uma imagem de exemplo.
 2. Escolha o tipo: Logo / ícone, Ilustração, Foto, Preto e branco ou Bem detalhado.
 3. Ajuste cores, detalhe, manchas, suavização e tamanho. Dá para remover o fundo e realçar cantos retos.
-4. Compare arrastando a linha (original × vetor) ou veja só o vetor ou só os contornos.
+4. Compare arrastando a linha (original × vetor) ou veja só o vetor, só o preenchimento (formas coloridas com o contorno sem cor; o SVG baixado/copiado nesse modo sai com `stroke="none"`) ou só os contornos.
 5. Baixe o SVG ou copie o código.
 
 ### Linha por série de Fourier

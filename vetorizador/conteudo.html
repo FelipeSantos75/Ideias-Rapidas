@@ -405,6 +405,7 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
         <div class="chips" id="modos" role="group" aria-label="Visualização">
           <button type="button" class="chip" data-modo="comparar" aria-pressed="true">Comparar</button>
           <button type="button" class="chip" data-modo="vetor" aria-pressed="false">Só o vetor</button>
+          <button type="button" class="chip" data-modo="preenchimento" aria-pressed="false">Só o preenchimento</button>
           <button type="button" class="chip" data-modo="contornos" aria-pressed="false">Só os contornos</button>
         </div>
         <div class="vz-palette" id="paleta" aria-label="Paleta de cores do SVG"></div>
@@ -732,16 +733,25 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
     $('#modos').querySelectorAll('.chip').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.modo === st.modo)));
     const comparar = st.modo === 'comparar';
     $('#orig-wrap').hidden = !comparar; $('#handle').hidden = !comparar; $('#tag-l').hidden = !comparar;
-    $('#tag-r').textContent = st.modo === 'contornos' ? 'Contornos' : 'Vetor (SVG)';
+    $('#tag-r').textContent = st.modo === 'contornos' ? 'Contornos' : st.modo === 'preenchimento' ? 'Só preenchimento' : 'Vetor (SVG)';
     canvas.style.cursor = comparar ? 'ew-resize' : 'default';
     if (st.modo === 'contornos' && st.svg) {
       const wire = st.svg.replace(/fill="rgb\([^)]*\)"/g, 'fill="none"').replace(/stroke="rgb\([^)]*\)"/g, 'stroke="#007aff"').replace(/stroke-width="[^"]*"/g, 'stroke-width="1"').replace(/opacity="[^"]*"/g, 'opacity="1"');
       const u = URL.createObjectURL(new Blob([wire], { type: 'image/svg+xml' }));
       const im = $('#img-svg'); const velho = im.dataset.wire; im.src = u; im.dataset.wire = u; if (velho) URL.revokeObjectURL(velho);
+    } else if (st.modo === 'preenchimento' && st.svg) {
+      const u = URL.createObjectURL(new Blob([svgSoPreenchimento()], { type: 'image/svg+xml' }));
+      const im = $('#img-svg'); const velho = im.dataset.wire; im.src = u; im.dataset.wire = u; if (velho) URL.revokeObjectURL(velho);
     } else if (st.blob) {
       $('#img-svg').src = st.blob;
     }
   }
+  // Só as cores de preenchimento: o contorno de cada forma fica sem cor (stroke="none")
+  function svgSoPreenchimento() {
+    return st.svg.replace(/stroke="rgb\([^)]*\)"/g, 'stroke="none"').replace(/ stroke-width="[^"]*"/g, '');
+  }
+  // O que baixar e copiar acompanha o modo "Só o preenchimento"
+  const svgSaida = () => (st.modo === 'preenchimento' ? svgSoPreenchimento() : st.svg);
   setCut(50);
 
   // ---------- Saída ----------
@@ -752,18 +762,19 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
   $('#baixar').addEventListener('click', async () => {
     if (!st.svg) return;
     if (downloads) {
-      try { await downloads.save({ filename: nomeArquivo(), data: st.svg }); msg('SVG salvo.', 'ok'); }
+      try { await downloads.save({ filename: nomeArquivo(), data: svgSaida() }); msg('SVG salvo.', 'ok'); }
       catch (e) { if (e && e.code === 'declined') msg('Download cancelado.'); else msg('Não foi possível baixar aqui. Use "Copiar código SVG" e cole num arquivo .svg.', 'bad'); }
       return;
     }
     if (window.claude) { msg('Não foi possível baixar aqui. Use "Copiar código SVG" e cole num arquivo .svg.', 'bad'); return; }
-    const a = document.createElement('a'); a.href = st.blob; a.download = nomeArquivo(); document.body.appendChild(a); a.click(); a.remove();
+    const href = st.modo === 'preenchimento' ? URL.createObjectURL(new Blob([svgSaida()], { type: 'image/svg+xml' })) : st.blob;
+    const a = document.createElement('a'); a.href = href; a.download = nomeArquivo(); document.body.appendChild(a); a.click(); a.remove();
     msg('SVG baixado.', 'ok');
   });
   $('#copiar').addEventListener('click', () => {
     if (!st.svg) return;
     const fallback = () => { const t = $('#codigo'); t.hidden = false; t.focus(); t.select(); msg('Não deu para copiar sozinho. O código está selecionado abaixo: copie com Ctrl+C.'); };
-    try { navigator.clipboard.writeText(st.svg).then(() => msg('Código SVG copiado.', 'ok'), fallback); } catch (e) { fallback(); }
+    try { navigator.clipboard.writeText(svgSaida()).then(() => msg('Código SVG copiado.', 'ok'), fallback); } catch (e) { fallback(); }
   });
 
   // ---------- Início ----------
