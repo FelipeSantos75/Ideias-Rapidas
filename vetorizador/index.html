@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vetorizador de Bitmap</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: mesa de trabalho — controles à esquerda, prancheta de comparação à direita; uma coluna no celular. */
+:root {
+  --bg: #eef0f3;
+  --panel: #ffffff;
+  --ink: #161a22;
+  --muted: #5d6573;
+  --line: #d9dde4;
+  --accent: #1f47d6;      /* azul de tinta de plotter */
+  --accent-ink: #ffffff;
+  --grid-a: #f6f7f9;
+  --grid-b: #e6e9ee;
+  --ok: #157a4a;
+  --bad: #b42318;
+  --display: "Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101318; --panel: #181c23; --ink: #e9ecf1; --muted: #9aa3b1; --line: #2a303a;
+    --accent: #7f9cff; --accent-ink: #0d1222; --grid-a: #1c2028; --grid-b: #242a34;
+    --ok: #5fd39a; --bad: #ff8a7a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101318; --panel: #181c23; --ink: #e9ecf1; --muted: #9aa3b1; --line: #2a303a;
+  --accent: #7f9cff; --accent-ink: #0d1222; --grid-a: #1c2028; --grid-b: #242a34;
+  --ok: #5fd39a; --bad: #ff8a7a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.45;
+  padding-block: 20px 32px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.vz { max-width: 72rem; margin-inline: auto; display: grid; gap: 16px; }
+.vz-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; }
+.vz-head h1 { font-family: var(--display); font-weight: 700; font-size: 1.7rem; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.vz-head p { margin: 0; color: var(--muted); max-width: 40rem; }
+.vz-main { display: grid; grid-template-columns: minmax(0, 21rem) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 52rem) { .vz-main { grid-template-columns: minmax(0, 1fr); } }
+.vz-panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; gap: 16px; min-width: 0; }
+.vz-sec { display: grid; gap: 8px; }
+.vz-label { font-size: .72rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+
+/* Entrada da imagem */
+.vz-drop { border: 1.5px dashed var(--line); border-radius: var(--r); padding: 14px; display: grid; gap: 8px; justify-items: start; transition: border-color .15s, background .15s; }
+.vz-drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.vz-drop small { color: var(--muted); }
+.vz-file { font-family: var(--mono); font-size: .8rem; color: var(--muted); overflow-wrap: anywhere; }
+
+/* Botões */
+.btn { font: inherit; font-weight: 600; font-size: .9rem; border-radius: 8px; padding: 8px 14px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+.btn:hover { border-color: var(--ink); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn:focus-visible, .chip:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Predefinições */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: inherit; font-size: .82rem; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+
+/* Ajustes */
+.ctl { display: grid; gap: 4px; }
+.ctl-top { display: flex; justify-content: space-between; gap: 8px; font-size: .88rem; }
+.ctl-top output { font-family: var(--mono); font-size: .82rem; color: var(--muted); }
+.ctl small { color: var(--muted); font-size: .78rem; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.chk { display: flex; gap: 8px; align-items: flex-start; font-size: .88rem; }
+.chk input { margin-top: 3px; accent-color: var(--accent); }
+
+/* Prancheta */
+.vz-board { display: grid; gap: 12px; min-width: 0; }
+.vz-stage { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.vz-canvas {
+  position: relative; width: 100%; aspect-ratio: var(--ar, 4 / 3); max-width: 100%;
+  background-color: var(--grid-a);
+  background-image: linear-gradient(45deg, var(--grid-b) 25%, transparent 25%, transparent 75%, var(--grid-b) 75%), linear-gradient(45deg, var(--grid-b) 25%, transparent 25%, transparent 75%, var(--grid-b) 75%);
+  background-size: 16px 16px; background-position: 0 0, 8px 8px;
+  touch-action: none; user-select: none;
+}
+.vz-canvas img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; max-width: none; }
+.vz-orig-wrap { position: absolute; inset: 0; clip-path: inset(0 calc(100% - var(--cut, 50%)) 0 0); }
+.vz-handle { position: absolute; top: 0; bottom: 0; left: var(--cut, 50%); width: 2px; background: var(--accent); transform: translateX(-1px); pointer-events: none; }
+.vz-handle::after { content: "⇆"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 34px; height: 34px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-size: 16px; font-weight: 700; }
+.vz-tag { position: absolute; top: 10px; padding: 2px 8px; border-radius: 6px; background: color-mix(in srgb, var(--panel) 88%, transparent); border: 1px solid var(--line); font-size: .75rem; font-weight: 600; pointer-events: none; }
+.vz-tag.l { left: 10px; } .vz-tag.r { right: 10px; }
+.vz-busy { position: absolute; inset: 0; display: grid; place-items: center; background: color-mix(in srgb, var(--panel) 55%, transparent); font-weight: 600; }
+.vz-modes { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; }
+.vz-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr)); gap: 8px; margin: 0; }
+.vz-stats div { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: grid; gap: 2px; }
+.vz-stats dt { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.vz-stats dd { margin: 0; font-family: var(--mono); font-size: .95rem; font-variant-numeric: tabular-nums; }
+.vz-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.vz-msg { font-size: .85rem; color: var(--muted); }
+.vz-msg.ok { color: var(--ok); } .vz-msg.bad { color: var(--bad); }
+.vz-palette { display: flex; flex-wrap: wrap; gap: 4px; }
+.vz-palette span { width: 22px; height: 22px; border-radius: 5px; border: 1px solid var(--line); }
+.vz-code { width: 100%; min-height: 7rem; font-family: var(--mono); font-size: .75rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); padding: 8px; resize: vertical; }
+.vz-foot { color: var(--muted); font-size: .8rem; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main class="vz">
+  <header class="vz-head">
+    <h1>Vetorizador de Bitmap</h1>
+    <p>Transforma PNG, JPG ou WebP em SVG. Tudo acontece no seu aparelho: a imagem não é enviada para nenhum servidor.</p>
+  </header>
+
+  <div class="vz-main">
+    <aside class="vz-panel" aria-label="Imagem e ajustes">
+      <section class="vz-sec">
+        <span class="vz-label">Imagem</span>
+        <div class="vz-drop" id="drop">
+          <input type="file" id="arquivo" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp" hidden>
+          <button type="button" class="btn primary" id="escolher">Escolher imagem</button>
+          <small>Ou arraste um arquivo para cá, ou cole com Ctrl+V.</small>
+          <span class="vz-file" id="nome-arquivo">Imagem de exemplo carregada</span>
+        </div>
+      </section>
+
+      <section class="vz-sec">
+        <span class="vz-label">Tipo de imagem</span>
+        <div class="chips" id="presets" role="group" aria-label="Predefinições"></div>
+      </section>
+
+      <section class="vz-sec">
+        <span class="vz-label">Ajustes</span>
+        <div class="ctl">
+          <div class="ctl-top"><label for="cores">Cores</label><output id="cores-v" for="cores"></output></div>
+          <input type="range" id="cores" min="2" max="64" step="1">
+          <small>Menos cores dão um SVG mais leve e com aspecto de ilustração.</small>
+        </div>
+        <div class="ctl">
+          <div class="ctl-top"><label for="detalhe">Detalhe</label><output id="detalhe-v" for="detalhe"></output></div>
+          <input type="range" id="detalhe" min="0" max="10" step="1">
+          <small>Mais detalhe segue melhor o contorno; menos deixa as curvas mais lisas.</small>
+        </div>
+        <div class="ctl">
+          <div class="ctl-top"><label for="manchas">Ignorar manchas menores que</label><output id="manchas-v" for="manchas"></output></div>
+          <input type="range" id="manchas" min="0" max="64" step="1">
+        </div>
+        <div class="ctl">
+          <div class="ctl-top"><label for="desfoque">Suavizar ruído antes</label><output id="desfoque-v" for="desfoque"></output></div>
+          <input type="range" id="desfoque" min="0" max="5" step="1">
+        </div>
+        <div class="ctl">
+          <div class="ctl-top"><label for="tamanho">Tamanho para processar</label><output id="tamanho-v" for="tamanho"></output></div>
+          <input type="range" id="tamanho" min="200" max="2000" step="100">
+          <small>Maior é mais fiel, porém mais lento. O SVG final pode ser ampliado sem perder qualidade.</small>
+        </div>
+        <label class="chk"><input type="checkbox" id="fundo"> <span>Remover o fundo (a cor dos cantos da imagem)</span></label>
+        <label class="chk"><input type="checkbox" id="cantos"> <span>Realçar cantos retos (bom para logos e letras)</span></label>
+      </section>
+    </aside>
+
+    <section class="vz-board" aria-label="Resultado">
+      <div class="vz-stage">
+        <div class="vz-canvas" id="canvas" role="slider" aria-label="Comparar original e vetor" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" tabindex="0">
+          <img class="svg" id="img-svg" alt="Resultado vetorizado">
+          <div class="vz-orig-wrap" id="orig-wrap"><img id="img-orig" alt="Imagem original"></div>
+          <div class="vz-handle" id="handle"></div>
+          <span class="vz-tag l" id="tag-l">Original</span>
+          <span class="vz-tag r" id="tag-r">Vetor (SVG)</span>
+          <div class="vz-busy" id="busy" hidden>Vetorizando…</div>
+        </div>
+      </div>
+
+      <div class="vz-modes">
+        <div class="chips" id="modos" role="group" aria-label="Visualização">
+          <button type="button" class="chip" data-modo="comparar" aria-pressed="true">Comparar</button>
+          <button type="button" class="chip" data-modo="vetor" aria-pressed="false">Só o vetor</button>
+          <button type="button" class="chip" data-modo="contornos" aria-pressed="false">Só os contornos</button>
+        </div>
+        <div class="vz-palette" id="paleta" aria-label="Paleta de cores do SVG"></div>
+      </div>
+
+      <dl class="vz-stats">
+        <div><dt>Caminhos</dt><dd id="st-caminhos">—</dd></div>
+        <div><dt>Cores</dt><dd id="st-cores">—</dd></div>
+        <div><dt>Tamanho do SVG</dt><dd id="st-tamanho">—</dd></div>
+        <div><dt>Processado em</dt><dd id="st-px">—</dd></div>
+        <div><dt>Tempo</dt><dd id="st-tempo">—</dd></div>
+      </dl>
+
+      <div class="vz-actions">
+        <button type="button" class="btn primary" id="baixar" disabled>Baixar SVG</button>
+        <button type="button" class="btn" id="copiar" disabled>Copiar código SVG</button>
+        <span class="vz-msg" id="msg" role="status" aria-live="polite"></span>
+      </div>
+      <textarea class="vz-code" id="codigo" hidden readonly aria-label="Código SVG"></textarea>
+      <p class="vz-foot">Funciona melhor com logos, ícones, desenhos e imagens com poucas cores. Fotos viram ilustrações com muitas áreas de cor.</p>
+    </section>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/imagetracerjs@1.2.6/imagetracer_v1.2.6.js"></script>
+<script>
+(function () {
+  const $ = (s) => document.querySelector(s);
+  const PRESETS = {
+    logo:        { nome: 'Logo / ícone',   cores: 6,  detalhe: 7, manchas: 8,  desfoque: 0, cantos: true,  fundo: false },
+    ilustracao:  { nome: 'Ilustração',     cores: 16, detalhe: 6, manchas: 8,  desfoque: 0, cantos: false, fundo: false },
+    foto:        { nome: 'Foto',           cores: 32, detalhe: 4, manchas: 16, desfoque: 2, cantos: false, fundo: false },
+    pb:          { nome: 'Preto e branco', cores: 2,  detalhe: 7, manchas: 8,  desfoque: 0, cantos: true,  fundo: false },
+    detalhado:   { nome: 'Bem detalhado',  cores: 48, detalhe: 10, manchas: 2, desfoque: 0, cantos: false, fundo: false },
+  };
+  const ids = ['cores', 'detalhe', 'manchas', 'desfoque', 'tamanho'];
+  const fmtV = { cores: (v) => v, detalhe: (v) => v + ' de 10', manchas: (v) => v + ' px', desfoque: (v) => (v == 0 ? 'desligado' : v), tamanho: (v) => v + ' px' };
+  const st = { img: null, nome: 'exemplo', svg: '', blob: null, modo: 'comparar', cut: 50, preset: 'logo' };
+
+  // ---------- Predefinições ----------
+  const presets = $('#presets');
+  Object.entries(PRESETS).forEach(([k, p]) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip'; b.dataset.k = k; b.textContent = p.nome;
+    b.addEventListener('click', () => aplicarPreset(k, true));
+    presets.appendChild(b);
+  });
+  function marcarPreset(k) { presets.querySelectorAll('.chip').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.k === k))); }
+  function aplicarPreset(k, rodar) {
+    const p = PRESETS[k]; st.preset = k;
+    $('#cores').value = p.cores; $('#detalhe').value = p.detalhe; $('#manchas').value = p.manchas; $('#desfoque').value = p.desfoque;
+    $('#cantos').checked = p.cantos;
+    if (k === 'pb' || k === 'logo') { /* mantém escolha de fundo do usuário */ } else $('#fundo').checked = p.fundo;
+    marcarPreset(k); mostrarValores(); if (rodar) agendar();
+  }
+  function mostrarValores() { ids.forEach((id) => { $('#' + id + '-v').textContent = fmtV[id]($('#' + id).value); }); }
+  ids.forEach((id) => $('#' + id).addEventListener('input', () => { mostrarValores(); marcarPreset(null); agendar(); }));
+  ['fundo', 'cantos'].forEach((id) => $('#' + id).addEventListener('change', () => { if (id === 'cantos') marcarPreset(null); agendar(); }));
+  $('#tamanho').value = 800;
+
+  // ---------- Entrada de imagem ----------
+  const inp = $('#arquivo'), drop = $('#drop');
+  $('#escolher').addEventListener('click', () => inp.click());
+  inp.addEventListener('change', () => { if (inp.files[0]) carregarArquivo(inp.files[0]); inp.value = ''; });
+  ['dragenter', 'dragover'].forEach((ev) => document.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach((ev) => document.addEventListener(ev, (e) => { e.preventDefault(); if (ev === 'dragleave' && e.relatedTarget) return; drop.classList.remove('over'); }));
+  document.addEventListener('drop', (e) => { const f = [...(e.dataTransfer?.files || [])].find((x) => x.type.startsWith('image/')); if (f) carregarArquivo(f); else if (e.dataTransfer?.files?.length) msg('Esse arquivo não é uma imagem. Use PNG, JPG, WebP, GIF ou BMP.', 'bad'); });
+  document.addEventListener('paste', (e) => { const it = [...(e.clipboardData?.items || [])].find((x) => x.type.startsWith('image/')); if (it) carregarArquivo(it.getAsFile(), 'imagem colada'); });
+
+  function carregarArquivo(f, nome) {
+    if (!f || !f.type.startsWith('image/')) { msg('Esse arquivo não é uma imagem. Use PNG, JPG, WebP, GIF ou BMP.', 'bad'); return; }
+    if (f.type === 'image/svg+xml') { msg('Essa imagem já é um SVG.', 'bad'); return; }
+    const url = URL.createObjectURL(f);
+    const im = new Image();
+    im.onload = () => { st.img = im; st.nome = (nome || f.name || 'imagem').replace(/\.[^.]+$/, ''); $('#nome-arquivo').textContent = (nome || f.name) + ' · ' + im.naturalWidth + '×' + im.naturalHeight + ' px'; $('#img-orig').src = url; agendar(true); };
+    im.onerror = () => msg('Não foi possível abrir essa imagem. Tente outro arquivo.', 'bad');
+    im.src = url;
+  }
+
+  // ---------- Imagem de exemplo (desenhada aqui, com bordas suavizadas como um bitmap real) ----------
+  function exemplo() {
+    const c = document.createElement('canvas'); c.width = 640; c.height = 480;
+    const g = c.getContext('2d');
+    g.fillStyle = '#f4efe4'; g.fillRect(0, 0, 640, 480);
+    g.fillStyle = '#f2a541'; g.beginPath(); g.arc(470, 150, 70, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#2f6b5e'; g.beginPath(); g.moveTo(0, 380); g.lineTo(170, 190); g.lineTo(300, 330); g.lineTo(390, 240); g.lineTo(640, 400); g.lineTo(640, 480); g.lineTo(0, 480); g.closePath(); g.fill();
+    g.fillStyle = '#1d3b36'; g.beginPath(); g.moveTo(0, 430); g.quadraticCurveTo(220, 330, 420, 410); g.quadraticCurveTo(540, 450, 640, 420); g.lineTo(640, 480); g.lineTo(0, 480); g.closePath(); g.fill();
+    g.fillStyle = '#ffffff'; g.beginPath(); g.moveTo(170, 190); g.lineTo(205, 230); g.lineTo(185, 225); g.lineTo(165, 240); g.lineTo(140, 225); g.closePath(); g.fill();
+    g.fillStyle = '#c8553d'; g.font = '700 54px Arial, sans-serif'; g.fillText('IDEIAS', 40, 90);
+    const im = new Image();
+    im.onload = () => { st.img = im; st.nome = 'exemplo'; $('#img-orig').src = im.src; agendar(true); };
+    im.src = c.toDataURL('image/png');
+  }
+
+  // ---------- Vetorização ----------
+  let timer = null, gen = 0;
+  function agendar(agora) { clearTimeout(timer); timer = setTimeout(vetorizar, agora ? 0 : 350); }
+  function opcoes() {
+    const d = +$('#detalhe').value;
+    const lim = +(10 - d * 0.95).toFixed(2); // detalhe 0 → 10 (liso), 10 → 0,5 (fiel)
+    return {
+      numberofcolors: +$('#cores').value, colorsampling: 2, colorquantcycles: 3, mincolorratio: 0,
+      ltres: Math.max(0.5, lim), qtres: Math.max(0.5, lim), pathomit: +$('#manchas').value,
+      blurradius: +$('#desfoque').value, blurdelta: 20, rightangleenhance: $('#cantos').checked,
+      strokewidth: 0, linefilter: +$('#manchas').value > 0, roundcoords: 1, viewbox: true, desc: false, scale: 1,
+    };
+  }
+  function vetorizar() {
+    if (!st.img || !window.ImageTracer) { if (!window.ImageTracer) msg('A biblioteca de vetorização não carregou. Verifique a conexão e recarregue a página.', 'bad'); return; }
+    const minha = ++gen;
+    $('#busy').hidden = false;
+    // espera o "Vetorizando…" aparecer antes do trabalho pesado
+    requestAnimationFrame(() => setTimeout(() => {
+      if (minha !== gen) return;
+      const t0 = performance.now();
+      const max = +$('#tamanho').value;
+      const w0 = st.img.naturalWidth, h0 = st.img.naturalHeight;
+      const k = Math.min(1, max / Math.max(w0, h0));
+      const w = Math.max(1, Math.round(w0 * k)), h = Math.max(1, Math.round(h0 * k));
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const g = c.getContext('2d', { willReadFrequently: true });
+      g.drawImage(st.img, 0, 0, w, h);
+      const imgd = g.getImageData(0, 0, w, h);
+      try {
+        const op = opcoes();
+        op.pal = paletaInicial(imgd, op.numberofcolors);
+        const td = ImageTracer.imagedataToTracedata(imgd, op);
+        let removida = -1;
+        if ($('#fundo').checked) {
+          removida = corDoFundo(imgd, td.palette);
+          if (removida >= 0) td.layers[removida] = [];
+        }
+        let svg = ImageTracer.getsvgstring(td, op);
+        if (!/xmlns=/.test(svg)) svg = svg.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
+        svg = svg.replace(/ desc="[^"]*"/g, '');
+        if (minha !== gen) return;
+        mostrar(svg, td, removida, w, h, performance.now() - t0);
+      } catch (e) {
+        msg('Não foi possível vetorizar essa imagem. Tente um tamanho menor.', 'bad');
+      } finally {
+        if (minha === gen) $('#busy').hidden = true;
+      }
+    }, 30));
+  }
+  // Paleta inicial por k-means++ (semente fixa, resultado repetível) sobre uma amostra dos pixels.
+  // A biblioteca refina essa paleta depois; começar bem evita perder cores pequenas, como um texto.
+  function paletaInicial(imgd, k) {
+    const { data } = imgd, n = data.length / 4;
+    const passo = Math.max(1, Math.floor(n / 20000));
+    const px = [];
+    for (let i = 0; i < n; i += passo) { const j = i * 4; px.push([data[j], data[j + 1], data[j + 2], data[j + 3]]); }
+    let seed = 1234567;
+    const rnd = () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const d2 = (a, b) => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2 + (a[3] - b[3]) ** 2;
+    const cs = [px[Math.floor(rnd() * px.length)].slice()];
+    const dist = px.map((p) => d2(p, cs[0]));
+    while (cs.length < Math.min(k, px.length)) {
+      const tot = dist.reduce((a, b) => a + b, 0);
+      if (tot === 0) break;
+      let r = rnd() * tot, i = 0;
+      while (r > dist[i] && i < px.length - 1) { r -= dist[i]; i++; }
+      cs.push(px[i].slice());
+      for (let j = 0; j < px.length; j++) dist[j] = Math.min(dist[j], d2(px[j], cs[cs.length - 1]));
+    }
+    for (let it = 0; it < 8; it++) {
+      const acc = cs.map(() => [0, 0, 0, 0, 0]);
+      for (const p of px) { let m = 0, md = Infinity; for (let c = 0; c < cs.length; c++) { const d = d2(p, cs[c]); if (d < md) { md = d; m = c; } } const a = acc[m]; a[0] += p[0]; a[1] += p[1]; a[2] += p[2]; a[3] += p[3]; a[4]++; }
+      acc.forEach((a, c) => { if (a[4]) cs[c] = [a[0] / a[4], a[1] / a[4], a[2] / a[4], a[3] / a[4]]; });
+    }
+    while (cs.length < k) cs.push(cs[cs.length - 1].slice());
+    return cs.map((c) => ({ r: Math.round(c[0]), g: Math.round(c[1]), b: Math.round(c[2]), a: Math.round(c[3]) }));
+  }
+
+  // cor da paleta mais próxima da média dos quatro cantos
+  function corDoFundo(imgd, pal) {
+    const { width: w, height: h, data } = imgd;
+    const pts = [[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1], [w >> 1, 0], [0, h >> 1], [w - 1, h >> 1], [w >> 1, h - 1]];
+    let r = 0, g2 = 0, b = 0, a = 0;
+    pts.forEach(([x, y]) => { const i = (y * w + x) * 4; r += data[i]; g2 += data[i + 1]; b += data[i + 2]; a += data[i + 3]; });
+    r /= pts.length; g2 /= pts.length; b /= pts.length; a /= pts.length;
+    if (a < 20) return -1; // fundo já é transparente
+    let melhor = -1, dist = Infinity;
+    pal.forEach((p, i) => { const d = (p.r - r) ** 2 + (p.g - g2) ** 2 + (p.b - b) ** 2; if (d < dist) { dist = d; melhor = i; } });
+    return melhor;
+  }
+  function mostrar(svg, td, removida, w, h, ms) {
+    st.svg = svg;
+    if (st.blob) URL.revokeObjectURL(st.blob);
+    st.blob = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+    $('#img-svg').src = st.blob;
+    $('#canvas').style.setProperty('--ar', w + ' / ' + h);
+    const caminhos = td.layers.reduce((n, l) => n + l.filter((p) => !p.isholepath).length, 0);
+    const usadas = td.palette.filter((_, i) => td.layers[i].length > 0);
+    $('#st-caminhos').textContent = caminhos.toLocaleString('pt-BR');
+    $('#st-cores').textContent = usadas.length + (removida >= 0 ? ' (sem o fundo)' : '');
+    const kb = new Blob([svg]).size / 1024;
+    $('#st-tamanho').textContent = kb < 1024 ? kb.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' KB' : (kb / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + ' MB';
+    $('#st-px').textContent = w + '×' + h + ' px';
+    $('#st-tempo').textContent = (ms / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' s';
+    $('#paleta').replaceChildren(...usadas.map((p) => { const s = document.createElement('span'); s.style.background = 'rgb(' + p.r + ',' + p.g + ',' + p.b + ')'; s.title = 'rgb(' + p.r + ', ' + p.g + ', ' + p.b + ')'; return s; }));
+    $('#baixar').disabled = false; $('#copiar').disabled = false;
+    $('#codigo').value = svg;
+    aplicarModo();
+    msg('');
+  }
+
+  // ---------- Visualização ----------
+  const canvas = $('#canvas');
+  function setCut(p) { st.cut = Math.max(0, Math.min(100, p)); canvas.style.setProperty('--cut', st.cut + '%'); canvas.setAttribute('aria-valuenow', Math.round(st.cut)); }
+  let arrastando = false;
+  const posCut = (e) => { const r = canvas.getBoundingClientRect(); setCut(((e.clientX - r.left) / r.width) * 100); };
+  canvas.addEventListener('pointerdown', (e) => { if (st.modo !== 'comparar') return; arrastando = true; canvas.setPointerCapture(e.pointerId); posCut(e); });
+  canvas.addEventListener('pointermove', (e) => { if (arrastando) posCut(e); });
+  canvas.addEventListener('pointerup', () => { arrastando = false; });
+  canvas.addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft') setCut(st.cut - 5); if (e.key === 'ArrowRight') setCut(st.cut + 5); });
+  $('#modos').addEventListener('click', (e) => { const b = e.target.closest('[data-modo]'); if (!b) return; st.modo = b.dataset.modo; aplicarModo(); });
+  function aplicarModo() {
+    $('#modos').querySelectorAll('.chip').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.modo === st.modo)));
+    const comparar = st.modo === 'comparar';
+    $('#orig-wrap').hidden = !comparar; $('#handle').hidden = !comparar; $('#tag-l').hidden = !comparar;
+    $('#tag-r').textContent = st.modo === 'contornos' ? 'Contornos' : 'Vetor (SVG)';
+    canvas.style.cursor = comparar ? 'ew-resize' : 'default';
+    if (st.modo === 'contornos' && st.svg) {
+      const wire = st.svg.replace(/fill="rgb\([^)]*\)"/g, 'fill="none"').replace(/stroke="rgb\([^)]*\)"/g, 'stroke="#1f47d6"').replace(/stroke-width="[^"]*"/g, 'stroke-width="1"').replace(/opacity="[^"]*"/g, 'opacity="1"');
+      const u = URL.createObjectURL(new Blob([wire], { type: 'image/svg+xml' }));
+      const im = $('#img-svg'); const velho = im.dataset.wire; im.src = u; im.dataset.wire = u; if (velho) URL.revokeObjectURL(velho);
+    } else if (st.blob) {
+      $('#img-svg').src = st.blob;
+    }
+  }
+  setCut(50);
+
+  // ---------- Saída ----------
+  function msg(t, tipo) { const m = $('#msg'); m.textContent = t; m.className = 'vz-msg' + (tipo ? ' ' + tipo : ''); }
+  const nomeArquivo = () => (st.nome || 'imagem').replace(/[^\w\-]+/g, '-').replace(/^-+|-+$/g, '') + '-vetor.svg';
+  let downloads = null;
+  try { window.claude?.use?.('downloads').then((d) => { downloads = d; }).catch(() => {}); } catch (e) { /* fora do Claude */ }
+  $('#baixar').addEventListener('click', async () => {
+    if (!st.svg) return;
+    if (downloads) {
+      try { await downloads.save({ filename: nomeArquivo(), data: st.svg }); msg('SVG salvo.', 'ok'); }
+      catch (e) { if (e && e.code === 'declined') msg('Download cancelado.'); else msg('Não foi possível baixar aqui. Use "Copiar código SVG" e cole num arquivo .svg.', 'bad'); }
+      return;
+    }
+    if (window.claude) { msg('Não foi possível baixar aqui. Use "Copiar código SVG" e cole num arquivo .svg.', 'bad'); return; }
+    const a = document.createElement('a'); a.href = st.blob; a.download = nomeArquivo(); document.body.appendChild(a); a.click(); a.remove();
+    msg('SVG baixado.', 'ok');
+  });
+  $('#copiar').addEventListener('click', () => {
+    if (!st.svg) return;
+    const fallback = () => { const t = $('#codigo'); t.hidden = false; t.focus(); t.select(); msg('Não deu para copiar sozinho. O código está selecionado abaixo: copie com Ctrl+C.'); };
+    try { navigator.clipboard.writeText(st.svg).then(() => msg('Código SVG copiado.', 'ok'), fallback); } catch (e) { fallback(); }
+  });
+
+  // ---------- Início ----------
+  aplicarPreset('logo', false);
+  exemplo();
+})();
+</script>
+</body>
+</html>

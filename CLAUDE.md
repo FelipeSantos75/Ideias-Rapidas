@@ -37,3 +37,4 @@ Passos curtos.
 | Pasta | Ideia | Status |
 |-------|-------|--------|
 | [`apuracao-2turno-2026`](apuracao-2turno-2026/) | Apuração ao vivo do 2º turno para presidente | testando |
+| [`vetorizador`](vetorizador/) | Vetorizar imagens bitmap (PNG/JPG) em SVG no navegador | testando |
