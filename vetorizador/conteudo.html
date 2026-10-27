@@ -384,6 +384,12 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
           <input type="range" id="tamanho" min="200" max="2000" step="100">
           <small>Maior é mais fiel, porém mais lento. O SVG final pode ser ampliado sem perder qualidade.</small>
         </div>
+        <label class="chk"><input type="checkbox" id="degrade"> <span>Juntar degradês (cada objeto com degradê vira uma forma só, preenchida em degradê)</span></label>
+        <div class="ctl" id="degrade-ctl" hidden>
+          <div class="ctl-top"><label for="degrade-tol">Tolerância do degradê</label><output id="degrade-tol-v" for="degrade-tol"></output></div>
+          <input type="range" id="degrade-tol" min="2" max="40" step="1" value="6">
+          <small>Quanto a cor pode mudar de um pixel para o vizinho e ainda ser o mesmo objeto. Mais alto junta degradês mais bruscos; alto demais junta objetos diferentes que se tocam sem borda nítida. Neste modo o ajuste "Cores" não é usado.</small>
+        </div>
         <label class="chk"><input type="checkbox" id="fundo"> <span>Remover o fundo (a cor dos cantos da imagem)</span></label>
         <label class="chk"><input type="checkbox" id="cantos"> <span>Realçar cantos retos (bom para logos e letras)</span></label>
       </section>
@@ -571,6 +577,10 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
   function mostrarValores() { ids.forEach((id) => { $('#' + id + '-v').textContent = fmtV[id]($('#' + id).value); }); }
   ids.forEach((id) => $('#' + id).addEventListener('input', () => { mostrarValores(); marcarPreset(null); agendar(); }));
   ['fundo', 'cantos'].forEach((id) => $('#' + id).addEventListener('change', () => { if (id === 'cantos') marcarPreset(null); agendar(); }));
+  const mostrarDegrade = () => { $('#degrade-ctl').hidden = !$('#degrade').checked; $('#degrade-tol-v').textContent = $('#degrade-tol').value; $('#cores').disabled = $('#degrade').checked; };
+  $('#degrade').addEventListener('change', () => { mostrarDegrade(); agendar(); });
+  $('#degrade-tol').addEventListener('input', () => { mostrarDegrade(); agendar(); });
+  mostrarDegrade();
   $('#tamanho').value = 800;
 
   // ---------- Entrada de imagem ----------
@@ -637,6 +647,13 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
       g.drawImage(st.img, 0, 0, w, h);
       const imgd = g.getImageData(0, 0, w, h);
       try {
+        if ($('#degrade').checked) {
+          const r = vetorizarDegrades(imgd);
+          if (minha !== gen) return;
+          mostrar(r.svg, r.td, r.removida, w, h, performance.now() - t0);
+          $('#st-cores').textContent = r.td.palette.length + ' formas · ' + r.nDegrade + ' em degradê';
+          return;
+        }
         const op = opcoes();
         op.pal = paletaInicial(imgd, op.numberofcolors);
         const td = ImageTracer.imagedataToTracedata(imgd, op);
@@ -684,6 +701,245 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
     }
     while (cs.length < k) cs.push(cs[cs.length - 1].slice());
     return cs.map((c) => ({ r: Math.round(c[0]), g: Math.round(c[1]), b: Math.round(c[2]), a: Math.round(c[3]) }));
+  }
+
+
+  // ================= Modo "Juntar degradês" =================
+  // 1) regiões por crescimento: vizinhos ficam juntos quando a cor muda pouco de um pixel para o outro
+  //    (um degradê suave vira uma região só, mesmo com pontas bem diferentes);
+  // 2) manchas pequenas são absorvidas pela região vizinha maior;
+  // 3) cada região vira um caminho SVG suavizado (Catmull-Rom → Bézier), com furos (evenodd);
+  // 4) o preenchimento é um degradê linear ajustado às cores reais: direção pela regressão
+  //    cor = a + b·x + c·y e paradas pela média de cor em faixas ao longo dessa direção.
+  function desfocar(img, r) {
+    if (!r) return img;
+    const { width: w, height: h } = img;
+    let a = new Float32Array(img.data), b = new Float32Array(a.length);
+    const passada = (src, dst, horiz) => {
+      const len = horiz ? w : h, lin = horiz ? h : w, jan = 2 * r + 1;
+      for (let L = 0; L < lin; L++) for (let ch = 0; ch < 4; ch++) {
+        const idx = (k) => ((horiz ? L * w + k : k * w + L) * 4) + ch;
+        let soma = 0;
+        for (let k = -r; k <= r; k++) soma += src[idx(Math.min(len - 1, Math.max(0, k)))];
+        for (let k = 0; k < len; k++) { dst[idx(k)] = soma / jan; soma += src[idx(Math.min(len - 1, k + r + 1))] - src[idx(Math.max(0, k - r))]; }
+      }
+    };
+    for (let i = 0; i < 2; i++) { passada(a, b, true); passada(b, a, false); }
+    const out = new ImageData(w, h); for (let i = 0; i < a.length; i++) out.data[i] = a[i];
+    return out;
+  }
+  function contornoMoore(lab, w, h, id, sx, sy, x0, y0) {
+    const DX = [-1, -1, 0, 1, 1, 1, 0, -1], DY = [0, -1, -1, -1, 0, 1, 1, 1];
+    const dentro = (x, y) => x >= 0 && y >= 0 && x < w && y < h && lab[y * w + x] === id;
+    const pts = [[sx + x0, sy + y0]];
+    let cx = sx, cy = sy, back = 0;
+    for (let passo = 0, lim = 8 * w * h; passo < lim; passo++) {
+      let achou = false;
+      for (let i = 1; i <= 8; i++) {
+        const dd = (back + i) % 8, nx = cx + DX[dd], ny = cy + DY[dd];
+        if (dentro(nx, ny)) {
+          const pd = (back + i - 1) % 8, px = cx + DX[pd], py = cy + DY[pd];
+          cx = nx; cy = ny;
+          for (let k = 0; k < 8; k++) if (cx + DX[k] === px && cy + DY[k] === py) { back = k; break; }
+          achou = true; break;
+        }
+      }
+      if (!achou || (cx === sx && cy === sy)) break;
+      pts.push([cx + x0, cy + y0]);
+    }
+    return pts;
+  }
+  function rdp(pts, eps) {
+    if (pts.length < 3) return pts;
+    const [x1, y1] = pts[0], [x2, y2] = pts[pts.length - 1];
+    const dx = x2 - x1, dy = y2 - y1, n = Math.hypot(dx, dy);
+    let dmax = 0, idx = 0;
+    for (let i = 1; i < pts.length - 1; i++) {
+      const [x, y] = pts[i];
+      const d = n ? Math.abs(dy * x - dx * y + x2 * y1 - y2 * x1) / n : Math.hypot(x - x1, y - y1);
+      if (d > dmax) { dmax = d; idx = i; }
+    }
+    if (dmax > eps) return rdp(pts.slice(0, idx + 1), eps).slice(0, -1).concat(rdp(pts.slice(idx), eps));
+    return [pts[0], pts[pts.length - 1]];
+  }
+  function caminhoSuave(anel, eps, cantos) {
+    if (anel.length < 3) return '';
+    let far = 0, fd = -1;
+    for (let i = 0; i < anel.length; i++) { const d = Math.hypot(anel[i][0] - anel[0][0], anel[i][1] - anel[0][1]); if (d > fd) { fd = d; far = i; } }
+    let p = rdp(anel.slice(0, far + 1), eps).slice(0, -1).concat(rdp(anel.slice(far).concat([anel[0]]), eps).slice(0, -1));
+    if (p.length < 3) p = anel.length >= 3 ? [anel[0], anel[Math.floor(anel.length / 3)], anel[Math.floor(2 * anel.length / 3)]] : p;
+    if (p.length < 3) return '';
+    p = p.map(([x, y]) => [x + 0.5, y + 0.5]);
+    const n = p.length, q = (i) => p[(i + n) % n];
+    // cantos agudos ficam retos quando "Realçar cantos" está ligado
+    const limCos = cantos ? -0.87 : -0.6; // canto: ângulo menor que ~150° (com "Realçar cantos") ou ~127°
+    const tens = p.map((_, i) => {
+      const a = q(i - 1), b = q(i), c = q(i + 1);
+      const v1 = [a[0] - b[0], a[1] - b[1]], v2 = [c[0] - b[0], c[1] - b[1]];
+      const cos = (v1[0] * v2[0] + v1[1] * v2[1]) / ((Math.hypot(...v1) * Math.hypot(...v2)) || 1);
+      return cos > limCos ? 0 : 1;
+    });
+    const f = (v) => +v.toFixed(1);
+    let d = 'M' + f(p[0][0]) + ' ' + f(p[0][1]);
+    for (let i = 0; i < n; i++) {
+      const p0 = q(i - 1), p1 = q(i), p2 = q(i + 1), p3 = q(i + 2);
+      const k1 = tens[i] / 6, k2 = tens[(i + 1) % n] / 6;
+      // alças de Catmull-Rom, limitadas a 1/3 do trecho para a curva não estufar
+      const seg = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
+      const lim = (v) => { const L = Math.hypot(v[0], v[1]); return L > seg / 3 && L > 0 ? [v[0] * seg / 3 / L, v[1] * seg / 3 / L] : v; };
+      const t1 = lim([(p2[0] - p0[0]) * k1, (p2[1] - p0[1]) * k1]), t2v = lim([(p3[0] - p1[0]) * k2, (p3[1] - p1[1]) * k2]);
+      const c1 = [p1[0] + t1[0], p1[1] + t1[1]];
+      const c2 = [p2[0] - t2v[0], p2[1] - t2v[1]];
+      d += 'C' + f(c1[0]) + ' ' + f(c1[1]) + ' ' + f(c2[0]) + ' ' + f(c2[1]) + ' ' + f(p2[0]) + ' ' + f(p2[1]);
+    }
+    return d + 'Z';
+  }
+  function vetorizarDegrades(imgd0) {
+    const { width: w, height: h } = imgd0, N = w * h;
+    const raio = Math.max(1, +$('#desfoque').value);
+    const img = desfocar(imgd0, raio), D = img.data;
+    const tol = +$('#degrade-tol').value, t2 = tol * tol, lim2 = 150 * 150; // passo local; distância máxima à cor média da região // passo local e distância total máxima ao início
+    const lab = new Int32Array(N), fila = new Int32Array(N);
+    let nreg = 0;
+    const area = [], semente = [], inicio = [];
+    for (let s0 = 0; s0 < N; s0++) {
+      if (lab[s0]) continue;
+      const id = ++nreg, j0 = s0 * 4;
+      let mr = D[j0], mg = D[j0 + 1], mb = D[j0 + 2], ma = D[j0 + 3], cont = 1; // média da região, atualizada ao crescer
+      let ini = 0, fim = 0, n = 0; fila[fim++] = s0; lab[s0] = id;
+      while (ini < fim) {
+        const pp = fila[ini++]; n++;
+        const x = pp % w, y = (pp / w) | 0, j = pp * 4;
+        const viz = [x > 0 ? pp - 1 : -1, x < w - 1 ? pp + 1 : -1, y > 0 ? pp - w : -1, y < h - 1 ? pp + w : -1];
+        for (const q of viz) {
+          if (q < 0 || lab[q]) continue;
+          const k = q * 4;
+          const dr = D[k] - D[j], dg = D[k + 1] - D[j + 1], db = D[k + 2] - D[j + 2], da = D[k + 3] - D[j + 3];
+          if (dr * dr + dg * dg + db * db + da * da > t2) continue;
+          const er = D[k] - mr / cont, eg = D[k + 1] - mg / cont, eb = D[k + 2] - mb / cont, ea = D[k + 3] - ma / cont;
+          if (er * er + eg * eg + eb * eb + ea * ea > lim2) continue;
+          lab[q] = id; fila[fim++] = q;
+          mr += D[k]; mg += D[k + 1]; mb += D[k + 2]; ma += D[k + 3]; cont++;
+        }
+      }
+      area[id] = n; inicio[id] = s0;
+    }
+    // absorve manchas pequenas na vizinha com mais borda em comum
+    const minA = Math.max(6, +$('#manchas').value * 2);
+    for (let volta = 0; volta < 4; volta++) {
+      // caixa de cada região para medir a largura média (área ÷ maior lado)
+      const bx0 = new Int32Array(nreg + 1).fill(w), by0 = new Int32Array(nreg + 1).fill(h), bx1 = new Int32Array(nreg + 1), by1 = new Int32Array(nreg + 1);
+      for (let pp = 0; pp < N; pp++) { const a = lab[pp], x = pp % w, y = (pp / w) | 0; if (x < bx0[a]) bx0[a] = x; if (x > bx1[a]) bx1[a] = x; if (y < by0[a]) by0[a] = y; if (y > by1[a]) by1[a] = y; }
+      const fraca = (a) => area[a] < minA || area[a] / Math.max(1, bx1[a] - bx0[a] + 1, by1[a] - by0[a] + 1) < 2.5;
+      const destino = new Map();
+      for (let pp = 0; pp < N; pp++) {
+        const a = lab[pp]; if (!fraca(a)) continue;
+        const x = pp % w, y = (pp / w) | 0;
+        for (const q of [x > 0 ? pp - 1 : -1, x < w - 1 ? pp + 1 : -1, y > 0 ? pp - w : -1, y < h - 1 ? pp + w : -1]) {
+          if (q < 0) continue; const b = lab[q]; if (b === a) continue;
+          let m = destino.get(a); if (!m) { m = new Map(); destino.set(a, m); }
+          m.set(b, (m.get(b) || 0) + 1);
+        }
+      }
+      if (!destino.size) break;
+      const para = new Map();
+      for (const [a, m] of destino) { let melhor = -1, mc = -1; for (const [b, c] of m) { const sc = c * Math.log2(2 + area[b]) * (fraca(b) ? 0.2 : 1); if (sc > mc) { mc = sc; melhor = b; } } para.set(a, melhor); }
+      const raiz = (a) => { let r = a, g = 0; while (para.has(r) && g++ < 50) r = para.get(r); return r; };
+      for (let pp = 0; pp < N; pp++) { const a = lab[pp]; if (para.has(a)) lab[pp] = raiz(a); }
+      area.fill(0); for (let pp = 0; pp < N; pp++) area[lab[pp]]++;
+    }
+    // estatísticas por região: média, caixa, somas para a regressão de cor
+    const ids = []; for (let i = 1; i <= nreg; i++) if (area[i] > 0) ids.push(i);
+    const S = new Map();
+    for (const i of ids) S.set(i, { n: 0, sx: 0, sy: 0, sxx: 0, sxy: 0, syy: 0, c: [0, 0, 0, 0], cx: [0, 0, 0], cy: [0, 0, 0], x0: w, y0: h, x1: 0, y1: 0, ini: -1 });
+    const C = imgd0.data;
+    for (let pp = 0; pp < N; pp++) {
+      const r = S.get(lab[pp]), x = pp % w, y = (pp / w) | 0, j = pp * 4;
+      if (r.ini < 0) r.ini = pp;
+      r.n++; r.sx += x; r.sy += y; r.sxx += x * x; r.sxy += x * y; r.syy += y * y;
+      for (let ch = 0; ch < 3; ch++) { r.c[ch] += C[j + ch]; r.cx[ch] += x * C[j + ch]; r.cy[ch] += y * C[j + ch]; }
+      r.c[3] += C[j + 3];
+      if (x < r.x0) r.x0 = x; if (x > r.x1) r.x1 = x; if (y < r.y0) r.y0 = y; if (y > r.y1) r.y1 = y;
+    }
+    // fundo: a região que mais ocupa a borda da imagem
+    let fundoId = -1;
+    if ($('#fundo').checked) {
+      const cnt = new Map();
+      for (let x = 0; x < w; x++) for (const y of [0, h - 1]) { const a = lab[y * w + x]; cnt.set(a, (cnt.get(a) || 0) + 1); }
+      for (let y = 0; y < h; y++) for (const x of [0, w - 1]) { const a = lab[y * w + x]; cnt.set(a, (cnt.get(a) || 0) + 1); }
+      let mc = 0; for (const [a, c] of cnt) if (c > mc) { mc = c; fundoId = a; }
+    }
+    // degradê de cada região
+    const corTxt = (c) => 'rgb(' + c.map((v) => Math.max(0, Math.min(255, Math.round(v)))).slice(0, 3).join(',') + ')';
+    const K = 5, info = new Map();
+    for (const i of ids) {
+      const r = S.get(i), n = r.n, mx = r.sx / n, my = r.sy / n;
+      const vxx = r.sxx / n - mx * mx, vxy = r.sxy / n - mx * my, vyy = r.syy / n - my * my, det = vxx * vyy - vxy * vxy;
+      const media = r.c.map((v) => v / n);
+      let grad = null;
+      if (n > 30 && det > 1e-6) {
+        const bx = [], by = [];
+        for (let ch = 0; ch < 3; ch++) {
+          const cxv = r.cx[ch] / n - mx * media[ch], cyv = r.cy[ch] / n - my * media[ch];
+          bx.push((cxv * vyy - cyv * vxy) / det); by.push((cyv * vxx - cxv * vxy) / det);
+        }
+        const gx = 0.3 * bx[0] + 0.59 * bx[1] + 0.11 * bx[2], gy = 0.3 * by[0] + 0.59 * by[1] + 0.11 * by[2], gm = Math.hypot(gx, gy);
+        const ext = 2 * Math.sqrt(Math.max(vxx, vyy)) * 2;
+        const delta = Math.hypot(...bx.map((v, ch) => Math.hypot(v, by[ch]))) * ext;
+        if (gm > 0 && delta > 14) grad = { ux: gx / gm, uy: gy / gm, mx, my, tmin: Infinity, tmax: -Infinity, bins: Array.from({ length: K }, () => [0, 0, 0, 0, 0]) };
+      }
+      info.set(i, { media, grad, area: n, bb: [r.x0, r.y0, r.x1, r.y1], ini: r.ini });
+    }
+    for (let pp = 0; pp < N; pp++) { const g = info.get(lab[pp]).grad; if (!g) continue; const t = (pp % w) * g.ux + ((pp / w) | 0) * g.uy; if (t < g.tmin) g.tmin = t; if (t > g.tmax) g.tmax = t; }
+    for (let pp = 0; pp < N; pp++) {
+      const g = info.get(lab[pp]).grad; if (!g) continue;
+      const t = (pp % w) * g.ux + ((pp / w) | 0) * g.uy, b = Math.min(K - 1, Math.floor(((t - g.tmin) / ((g.tmax - g.tmin) || 1)) * K)), j = pp * 4, B = g.bins[b];
+      B[0] += C[j]; B[1] += C[j + 1]; B[2] += C[j + 2]; B[3] += C[j + 3]; B[4]++;
+    }
+    // caminhos (com furos para regiões que contornam outras) e SVG
+    const detalhe = +$('#detalhe').value, eps = Math.max(0.4, 2.6 - detalhe * 0.22), cantos = $('#cantos').checked;
+    const ordem = ids.filter((i) => i !== fundoId).sort((a, b) => info.get(b).area - info.get(a).area);
+    const defs = [], paths = [];
+    let nDeg = 0, furosCalc = 0;
+    for (const i of ordem) {
+      const inf = info.get(i), [x0, y0, x1, y1] = inf.bb, bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+      const sub = new Int32Array(bw * bh);
+      for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) if (lab[(y + y0) * w + x + x0] === i) sub[y * bw + x] = 1;
+      const si = inf.ini, sx = (si % w) - x0, sy = ((si / w) | 0) - y0;
+      let d = caminhoSuave(contornoMoore(sub, bw, bh, 1, sx, sy, x0, y0), eps, cantos);
+      if (!d) continue;
+      // furos só onde a região é "vazada" (caixa bem maior que a área), para não pesar
+      if (bw * bh > 3 * inf.area && furosCalc < 80) {
+        furosCalc++;
+        const hl = new Int32Array(bw * bh), fq = new Int32Array(bw * bh); let hid = 1;
+        for (let p0 = 0; p0 < hl.length; p0++) {
+          if (hl[p0] || sub[p0]) continue;
+          hid++; let ini = 0, fim = 0, n = 0, borda = false; fq[fim++] = p0; hl[p0] = hid;
+          while (ini < fim) { const q = fq[ini++]; n++; const x = q % bw, y = (q / bw) | 0; if (!x || !y || x === bw - 1 || y === bh - 1) borda = true; for (const [nx, ny] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) { if (nx < 0 || ny < 0 || nx >= bw || ny >= bh) continue; const r2 = ny * bw + nx; if (hl[r2] || sub[r2]) continue; hl[r2] = hid; fq[fim++] = r2; } }
+          if (!borda && n >= minA) { const dh = caminhoSuave(contornoMoore(hl, bw, bh, hid, p0 % bw, (p0 / bw) | 0, x0, y0), eps, cantos); if (dh) d += dh; }
+        }
+      }
+      let fill;
+      const g = inf.grad;
+      if (g) {
+        const stops = g.bins.map((B, k) => (B[4] ? { off: (k + 0.5) / K, c: [B[0] / B[4], B[1] / B[4], B[2] / B[4], B[3] / B[4]] } : null)).filter(Boolean);
+        if (stops.length >= 2) {
+          nDeg++;
+          const tc = g.mx * g.ux + g.my * g.uy, p1 = [g.mx + (g.tmin - tc) * g.ux, g.my + (g.tmin - tc) * g.uy], p2 = [g.mx + (g.tmax - tc) * g.ux, g.my + (g.tmax - tc) * g.uy];
+          defs.push('<linearGradient id="g' + i + '" gradientUnits="userSpaceOnUse" x1="' + p1[0].toFixed(1) + '" y1="' + p1[1].toFixed(1) + '" x2="' + p2[0].toFixed(1) + '" y2="' + p2[1].toFixed(1) + '">'
+            + stops.map((sp) => '<stop offset="' + sp.off.toFixed(3) + '" stop-color="' + corTxt(sp.c) + '"' + (sp.c[3] < 250 ? ' stop-opacity="' + (sp.c[3] / 255).toFixed(2) + '"' : '') + '/>').join('') + '</linearGradient>');
+          fill = 'url(#g' + i + ')';
+        }
+      }
+      if (!fill) fill = corTxt(inf.media);
+      const op = inf.media[3] < 250 ? ' opacity="' + (inf.media[3] / 255).toFixed(2) + '"' : '';
+      // contorno fino na mesma tinta cobre as frestas de meio pixel entre formas vizinhas
+      paths.push('<path fill="' + fill + '" stroke="' + fill + '" stroke-width="1" stroke-linejoin="round" fill-rule="evenodd"' + op + ' d="' + d + '"/>');
+    }
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + w + ' ' + h + '" width="' + w + '" height="' + h + '" version="1.1">'
+      + (defs.length ? '<defs>' + defs.join('') + '</defs>' : '') + paths.join('') + '</svg>';
+    const pal = ordem.map((i) => { const m = info.get(i).media; return { r: Math.round(m[0]), g: Math.round(m[1]), b: Math.round(m[2]) }; });
+    return { svg, nDegrade: nDeg, removida: fundoId >= 0 ? 0 : -1, td: { layers: pal.map(() => [{}]), palette: pal } };
   }
 
   // cor da paleta mais próxima da média dos quatro cantos
@@ -736,7 +992,7 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
     $('#tag-r').textContent = st.modo === 'contornos' ? 'Contornos' : st.modo === 'preenchimento' ? 'Só preenchimento' : 'Vetor (SVG)';
     canvas.style.cursor = comparar ? 'ew-resize' : 'default';
     if (st.modo === 'contornos' && st.svg) {
-      const wire = st.svg.replace(/fill="rgb\([^)]*\)"/g, 'fill="none"').replace(/stroke="rgb\([^)]*\)"/g, 'stroke="#007aff"').replace(/stroke-width="[^"]*"/g, 'stroke-width="1"').replace(/opacity="[^"]*"/g, 'opacity="1"');
+      const wire = st.svg.replace(/fill="(rgb\([^)]*\)|url\(#[^)]*\))"/g, 'fill="none"').replace(/stroke="(rgb\([^)]*\)|url\(#[^)]*\))"/g, 'stroke="#007aff"').replace(/stroke-width="[^"]*"/g, 'stroke-width="1"').replace(/opacity="[^"]*"/g, 'opacity="1"');
       const u = URL.createObjectURL(new Blob([wire], { type: 'image/svg+xml' }));
       const im = $('#img-svg'); const velho = im.dataset.wire; im.src = u; im.dataset.wire = u; if (velho) URL.revokeObjectURL(velho);
     } else if (st.modo === 'preenchimento' && st.svg) {
@@ -748,7 +1004,7 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
   }
   // Só as cores de preenchimento: o contorno de cada forma fica sem cor (stroke="none")
   function svgSoPreenchimento() {
-    return st.svg.replace(/stroke="rgb\([^)]*\)"/g, 'stroke="none"').replace(/ stroke-width="[^"]*"/g, '');
+    return st.svg.replace(/stroke="(rgb\([^)]*\)|url\(#[^)]*\))"/g, 'stroke="none"').replace(/ stroke-width="[^"]*"/g, '');
   }
   // O que baixar e copiar acompanha o modo "Só o preenchimento"
   const svgSaida = () => (st.modo === 'preenchimento' ? svgSoPreenchimento() : st.svg);

@@ -25,6 +25,14 @@ Transformar imagens bitmap (PNG, JPG, WebP, GIF, BMP) em SVG direto no navegador
 7. **Curvas Bézier:** cada trecho entre dois pontos (de A até B) é uma curva cúbica de Bézier, não uma reta. As alças vêm da derivada da própria série, z'(t) = Σ 2πi·n·cₙ·e^(2πi·n·t): P1 = A + z'(t₀)·Δt/3 e P2 = B − z'(t₁)·Δt/3. Assim as curvas emendam sem quina e ficam fiéis à série mesmo com poucos pontos. Dá para ver as alças e desligar (volta a retas). O SVG usa comandos `C`.
 8. **Furos:** áreas sem a cor totalmente cercadas pela área (o miolo de um "O", por exemplo) viram contornos internos, em laranja, com série de Fourier própria. No SVG ficam como subcaminhos do mesmo caminho (`fill-rule="evenodd"`).
 
+### Juntar degradês
+Com o interruptor **Juntar degradês**, cada objeto com degradê (um círculo do vermelho claro ao escuro, por exemplo) vira **uma forma só**, preenchida com um `linearGradient`, em vez de dezenas de faixas.
+1. A imagem é dividida em regiões que crescem pixel a pixel: o vizinho entra se a cor mudar pouco em relação a ele (**Tolerância do degradê**, padrão 6) e não se afastar demais da cor média da região.
+2. Manchas pequenas e tiras finas (bordas serrilhadas) são absorvidas pela região vizinha.
+3. O degradê vem das cores reais: direção pela regressão cor = a + b·x + c·y e 5 paradas pela média de cor ao longo dessa direção. Regiões sem variação ficam com cor sólida.
+4. O contorno é simplificado (Douglas-Peucker) e suavizado em curvas Bézier, mantendo cantos; regiões vazadas ganham furos (`evenodd`).
+Teste: círculo + retângulo em degradê passaram de 48 caminhos (16 cores) para 3 formas (2 em degradê), e o SVG de 17,5 KB para 2,4 KB.
+
 ## Visual
 Segue o design system **Liquid Glass** da conta (https://claude.ai/artifact/4MXM3vL7iBhfxCU9weAxkW): cartões opacos para o conteúdo, vidro translúcido só no que flutua sobre a imagem (etiquetas, puxador, avisos), botões e escolhas em cápsula, interruptores, fonte do sistema e temas claro e escuro pelos tokens.
 
