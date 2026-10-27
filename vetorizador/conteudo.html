@@ -108,6 +108,21 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .vz-palette span { width: 22px; height: 22px; border-radius: 5px; border: 1px solid var(--line); }
 .vz-code { width: 100%; min-height: 7rem; font-family: var(--mono); font-size: .75rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); padding: 8px; resize: vertical; }
 .vz-foot { color: var(--muted); font-size: .8rem; }
+/* Linha por série de Fourier */
+.fx { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; gap: 16px; }
+.fx h2 { font-family: var(--display); font-weight: 700; font-size: 1.3rem; margin: 0; text-wrap: balance; }
+.fx-intro { margin: 4px 0 0; color: var(--muted); max-width: 46rem; }
+.fx-grid { display: grid; grid-template-columns: minmax(0, 19rem) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 52rem) { .fx-grid { grid-template-columns: minmax(0, 1fr); } }
+.fx-ctrls { display: grid; gap: 14px; min-width: 0; }
+.fx-cor { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.fx-sw { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--line); flex: none; }
+.fx-cor code { font-family: var(--mono); font-size: .82rem; color: var(--muted); }
+.fx-cor input[type=color] { width: 44px; height: 34px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); cursor: pointer; }
+.fx-stage { position: relative; background-color: var(--grid-a); background-image: linear-gradient(45deg, var(--grid-b) 25%, transparent 25%, transparent 75%, var(--grid-b) 75%), linear-gradient(45deg, var(--grid-b) 25%, transparent 25%, transparent 75%, var(--grid-b) 75%); background-size: 16px 16px; background-position: 0 0, 8px 8px; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.fx-stage canvas { display: block; width: 100%; height: auto; max-width: 100%; cursor: crosshair; touch-action: manipulation; }
+.fx-hint { position: absolute; left: 10px; bottom: 10px; padding: 2px 8px; border-radius: 6px; background: color-mix(in srgb, var(--panel) 88%, transparent); border: 1px solid var(--line); font-size: .75rem; font-weight: 600; pointer-events: none; }
+.fx-formula { font-family: var(--mono); font-size: .8rem; color: var(--muted); overflow-x: auto; white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
@@ -202,6 +217,74 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
       <p class="vz-foot">Funciona melhor com logos, ícones, desenhos e imagens com poucas cores. Fotos viram ilustrações com muitas áreas de cor.</p>
     </section>
   </div>
+  <section class="fx" id="fourier" aria-labelledby="fx-titulo">
+    <div>
+      <h2 id="fx-titulo">Linha por série de Fourier</h2>
+      <p class="fx-intro">Toque numa cor da imagem. A ferramenta acha as áreas com essa cor, pega o contorno e redesenha a linha somando ondas circulares (termos da série de Fourier). Poucos termos dão uma linha lisa; muitos termos seguem o contorno de perto.</p>
+    </div>
+    <div class="fx-grid">
+      <div class="fx-ctrls">
+        <div class="vz-sec">
+          <span class="vz-label">Cor alvo</span>
+          <div class="fx-cor">
+            <span class="fx-sw" id="fx-sw"></span>
+            <input type="color" id="fx-cor" aria-label="Escolher cor manualmente">
+            <code id="fx-cor-txt">—</code>
+          </div>
+          <small class="vz-msg">Toque na imagem ao lado para pegar a cor de um ponto.</small>
+        </div>
+        <div class="ctl">
+          <div class="ctl-top"><label for="fx-tol">Tolerância de cor</label><output id="fx-tol-v" for="fx-tol"></output></div>
+          <input type="range" id="fx-tol" min="0" max="60" step="1" value="12">
+          <small>Quanto a cor pode variar e ainda contar. 0% aceita só a cor exata; valores maiores pegam tons vizinhos, sombras e bordas suavizadas.</small>
+        </div>
+        <div class="ctl">
+          <div class="ctl-top"><label for="fx-int">Intervalo de pontos</label><output id="fx-int-v" for="fx-int"></output></div>
+          <input type="range" id="fx-int" min="1" max="30" step="1" value="4">
+          <small>Distância entre os pontos tirados do contorno. Menor guarda mais detalhe; maior é mais rápido.</small>
+        </div>
+        <div class="ctl">
+          <div class="ctl-top"><label for="fx-termos">Termos da série</label><output id="fx-termos-v" for="fx-termos"></output></div>
+          <input type="range" id="fx-termos" min="1" max="300" step="1" value="40">
+          <small>Número de pares de círculos (frequências −n…+n). Limitado pela quantidade de pontos.</small>
+        </div>
+        <div class="ctl">
+          <div class="ctl-top"><label for="fx-min">Ignorar áreas menores que</label><output id="fx-min-v" for="fx-min"></output></div>
+          <input type="range" id="fx-min" min="0" max="2000" step="10" value="40">
+        </div>
+        <div class="vz-sec">
+          <span class="vz-label">Quais áreas</span>
+          <div class="chips" id="fx-areas" role="group" aria-label="Quais áreas desenhar">
+            <button type="button" class="chip" data-a="maior" aria-pressed="true">Só a maior</button>
+            <button type="button" class="chip" data-a="todas" aria-pressed="false">Todas (até 30)</button>
+          </div>
+        </div>
+        <label class="chk"><input type="checkbox" id="fx-mascara" checked> <span>Mostrar a área encontrada</span></label>
+        <label class="chk"><input type="checkbox" id="fx-pontos"> <span>Mostrar os pontos amostrados</span></label>
+      </div>
+      <div class="vz-board">
+        <div class="fx-stage">
+          <canvas id="fx-canvas" width="640" height="480" aria-label="Imagem com a linha da série de Fourier. Toque para escolher a cor."></canvas>
+          <span class="fx-hint" id="fx-hint">Toque para escolher a cor</span>
+        </div>
+        <dl class="vz-stats">
+          <div><dt>Áreas</dt><dd id="fx-st-areas">—</dd></div>
+          <div><dt>Pixels no contorno</dt><dd id="fx-st-contorno">—</dd></div>
+          <div><dt>Pontos amostrados</dt><dd id="fx-st-pontos">—</dd></div>
+          <div><dt>Termos usados</dt><dd id="fx-st-termos">—</dd></div>
+          <div><dt>Erro médio</dt><dd id="fx-st-erro">—</dd></div>
+        </dl>
+        <p class="fx-formula" id="fx-formula">z(t) = Σ cₙ · e^(2πi·n·t), n = −N…N</p>
+        <div class="vz-actions">
+          <button type="button" class="btn primary" id="fx-animar" disabled>Animar círculos</button>
+          <button type="button" class="btn" id="fx-baixar" disabled>Baixar linha (SVG)</button>
+          <button type="button" class="btn" id="fx-copiar" disabled>Copiar coeficientes</button>
+          <span class="vz-msg" id="fx-msg" role="status" aria-live="polite"></span>
+        </div>
+        <textarea class="vz-code" id="fx-codigo" hidden readonly aria-label="Coeficientes da série"></textarea>
+      </div>
+    </div>
+  </section>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/imagetracerjs@1.2.6/imagetracer_v1.2.6.js"></script>
@@ -254,7 +337,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
     if (f.type === 'image/svg+xml') { msg('Essa imagem já é um SVG.', 'bad'); return; }
     const url = URL.createObjectURL(f);
     const im = new Image();
-    im.onload = () => { st.img = im; st.nome = (nome || f.name || 'imagem').replace(/\.[^.]+$/, ''); $('#nome-arquivo').textContent = (nome || f.name) + ' · ' + im.naturalWidth + '×' + im.naturalHeight + ' px'; $('#img-orig').src = url; agendar(true); };
+    im.onload = () => { st.img = im; st.nome = (nome || f.name || 'imagem').replace(/\.[^.]+$/, ''); $('#nome-arquivo').textContent = (nome || f.name) + ' · ' + im.naturalWidth + '×' + im.naturalHeight + ' px'; $('#img-orig').src = url; agendar(true); document.dispatchEvent(new CustomEvent('vz:imagem', { detail: { img: im, exemplo: false } })); };
     im.onerror = () => msg('Não foi possível abrir essa imagem. Tente outro arquivo.', 'bad');
     im.src = url;
   }
@@ -270,7 +353,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
     g.fillStyle = '#ffffff'; g.beginPath(); g.moveTo(170, 190); g.lineTo(205, 230); g.lineTo(185, 225); g.lineTo(165, 240); g.lineTo(140, 225); g.closePath(); g.fill();
     g.fillStyle = '#c8553d'; g.font = '700 54px Arial, sans-serif'; g.fillText('IDEIAS', 40, 90);
     const im = new Image();
-    im.onload = () => { st.img = im; st.nome = 'exemplo'; $('#img-orig').src = im.src; agendar(true); };
+    im.onload = () => { st.img = im; st.nome = 'exemplo'; $('#img-orig').src = im.src; agendar(true); document.dispatchEvent(new CustomEvent('vz:imagem', { detail: { img: im, exemplo: true } })); };
     im.src = c.toDataURL('image/png');
   }
 
@@ -439,3 +522,298 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   exemplo();
 })();
 </script>
+<script>
+// Linha por série de Fourier sobre uma cor da imagem
+(function () {
+  const $ = (s) => document.querySelector(s);
+  const MAX_LADO = 700, MAX_PONTOS = 4000, MAX_AREAS = 30;
+  const cv = $('#fx-canvas'), g = cv.getContext('2d');
+  const st = { img: null, w: 0, h: 0, px: null, cor: null, areas: [], modo: 'maior', anim: null, exemplo: false };
+  const base = document.createElement('canvas');
+
+  const fmt1 = (v) => v.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+  const hex = (c) => '#' + [c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('');
+  function msg(t, tipo) { const m = $('#fx-msg'); m.textContent = t; m.className = 'vz-msg' + (tipo ? ' ' + tipo : ''); }
+
+  // ---------- Controles ----------
+  const vals = { 'fx-tol': (v) => v + '%', 'fx-int': (v) => v + ' px', 'fx-termos': (v) => v, 'fx-min': (v) => v + ' px²' };
+  const mostrarVals = () => Object.entries(vals).forEach(([id, f]) => { $('#' + id + '-v').textContent = f($('#' + id).value); });
+  let tm = null;
+  const agendar = (todo) => { clearTimeout(tm); tm = setTimeout(() => (todo ? calcular() : redesenhar()), 120); };
+  ['fx-tol', 'fx-min'].forEach((id) => $('#' + id).addEventListener('input', () => { mostrarVals(); agendar(true); }));
+  ['fx-int', 'fx-termos'].forEach((id) => $('#' + id).addEventListener('input', () => { mostrarVals(); agendar(false); }));
+  ['fx-mascara', 'fx-pontos'].forEach((id) => $('#' + id).addEventListener('change', () => desenhar()));
+  $('#fx-areas').addEventListener('click', (e) => { const b = e.target.closest('[data-a]'); if (!b) return; st.modo = b.dataset.a; $('#fx-areas').querySelectorAll('.chip').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); calcular(); });
+  $('#fx-cor').addEventListener('input', (e) => { const v = e.target.value; definirCor({ r: parseInt(v.slice(1, 3), 16), g: parseInt(v.slice(3, 5), 16), b: parseInt(v.slice(5, 7), 16) }); });
+  cv.addEventListener('click', (e) => {
+    if (!st.px) return;
+    const r = cv.getBoundingClientRect();
+    const x = Math.floor(((e.clientX - r.left) / r.width) * st.w), y = Math.floor(((e.clientY - r.top) / r.height) * st.h);
+    if (x < 0 || y < 0 || x >= st.w || y >= st.h) return;
+    const i = (y * st.w + x) * 4, d = st.px.data;
+    if (d[i + 3] < 20) { msg('Esse ponto é transparente. Toque numa área com cor.', 'bad'); return; }
+    definirCor({ r: d[i], g: d[i + 1], b: d[i + 2] });
+  });
+  function definirCor(c) {
+    st.cor = c;
+    $('#fx-sw').style.background = hex(c); $('#fx-cor').value = hex(c); $('#fx-cor-txt').textContent = hex(c) + ' · rgb(' + c.r + ', ' + c.g + ', ' + c.b + ')';
+    $('#fx-hint').hidden = true;
+    calcular();
+  }
+
+  // ---------- Imagem ----------
+  document.addEventListener('vz:imagem', (e) => carregar(e.detail.img, e.detail.exemplo));
+  function carregar(img, exemplo) {
+    pararAnim();
+    const k = Math.min(1, MAX_LADO / Math.max(img.naturalWidth, img.naturalHeight));
+    st.w = Math.max(1, Math.round(img.naturalWidth * k)); st.h = Math.max(1, Math.round(img.naturalHeight * k));
+    base.width = st.w; base.height = st.h;
+    const bg = base.getContext('2d', { willReadFrequently: true });
+    bg.clearRect(0, 0, st.w, st.h); bg.drawImage(img, 0, 0, st.w, st.h);
+    st.px = bg.getImageData(0, 0, st.w, st.h);
+    cv.width = st.w; cv.height = st.h;
+    st.img = img; st.exemplo = exemplo;
+    // cor inicial: no exemplo, o sol; numa imagem nova, o pixel do centro
+    const px = exemplo ? [Math.round(470 * k), Math.round(150 * k)] : [st.w >> 1, st.h >> 1];
+    const i = (px[1] * st.w + px[0]) * 4, d = st.px.data;
+    st.cor = null;
+    definirCor({ r: d[i], g: d[i + 1], b: d[i + 2] });
+    $('#fx-hint').hidden = false;
+  }
+
+  // ---------- Máscara, áreas e contornos ----------
+  function calcular() {
+    if (!st.px || !st.cor) return;
+    pararAnim();
+    const { w, h } = st, d = st.px.data, c = st.cor;
+    const tol = (+$('#fx-tol').value / 100) * 441.673; // distância máxima em RGB (√3·255)
+    const t2 = tol * tol;
+    const mask = new Uint8Array(w * h);
+    for (let i = 0, j = 0; i < mask.length; i++, j += 4) {
+      if (d[j + 3] < 20) continue;
+      const dr = d[j] - c.r, dg = d[j + 1] - c.g, db = d[j + 2] - c.b;
+      if (dr * dr + dg * dg + db * db <= t2) mask[i] = 1;
+    }
+    st.mask = mask;
+    // camada da área encontrada, pronta para desenhar
+    const ov = new ImageData(w, h), o = ov.data;
+    for (let i = 0; i < mask.length; i++) if (mask[i]) { const j = i * 4; o[j] = 255; o[j + 1] = 0; o[j + 2] = 140; o[j + 3] = 70; }
+    st.maskCv = document.createElement('canvas'); st.maskCv.width = w; st.maskCv.height = h; st.maskCv.getContext('2d').putImageData(ov, 0, 0);
+    // áreas conectadas (vizinhança de 8)
+    const lab = new Int32Array(w * h);
+    const areas = [];
+    const fila = new Int32Array(w * h);
+    let id = 0;
+    for (let s0 = 0; s0 < mask.length; s0++) {
+      if (!mask[s0] || lab[s0]) continue;
+      id++; let ini = 0, fim = 0; fila[fim++] = s0; lab[s0] = id; let n = 0;
+      while (ini < fim) {
+        const p = fila[ini++]; n++;
+        const x = p % w, y = (p / w) | 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const q = ny * w + nx;
+          if (mask[q] && !lab[q]) { lab[q] = id; fila[fim++] = q; }
+        }
+      }
+      areas.push({ id, n, inicio: s0 });
+    }
+    const minA = +$('#fx-min').value;
+    let sel = areas.filter((a) => a.n >= Math.max(3, minA)).sort((a, b) => b.n - a.n);
+    sel = st.modo === 'maior' ? sel.slice(0, 1) : sel.slice(0, MAX_AREAS);
+    st.areas = sel.map((a) => ({ n: a.n, contorno: contorno(lab, w, h, a.id, a.inicio % w, (a.inicio / w) | 0) })).filter((a) => a.contorno.length >= 3);
+    redesenhar();
+  }
+
+  // Contorno externo pelo método de Moore (sentido horário)
+  function contorno(lab, w, h, id, sx, sy) {
+    const DX = [-1, -1, 0, 1, 1, 1, 0, -1], DY = [0, -1, -1, -1, 0, 1, 1, 1];
+    const dentro = (x, y) => x >= 0 && y >= 0 && x < w && y < h && lab[y * w + x] === id;
+    const pts = [[sx, sy]];
+    let cx = sx, cy = sy, back = 0; // começa olhando a oeste (fora da área)
+    const limite = 8 * w * h;
+    for (let passo = 0; passo < limite; passo++) {
+      let achou = false;
+      for (let i = 1; i <= 8; i++) {
+        const dd = (back + i) % 8, nx = cx + DX[dd], ny = cy + DY[dd];
+        if (dentro(nx, ny)) {
+          const pd = (back + i - 1) % 8, px = cx + DX[pd], py = cy + DY[pd];
+          cx = nx; cy = ny;
+          for (let k = 0; k < 8; k++) if (cx + DX[k] === px && cy + DY[k] === py) { back = k; break; }
+          achou = true; break;
+        }
+      }
+      if (!achou) break; // pixel isolado
+      if (cx === sx && cy === sy) {
+        if (pts.length > 1) break;
+      }
+      pts.push([cx, cy]);
+      if (pts.length > 4 * (w + h) * 4) break;
+    }
+    return pts;
+  }
+
+  // ---------- Série de Fourier ----------
+  function amostrar(pts, passo) {
+    const L = [0];
+    for (let i = 1; i <= pts.length; i++) { const a = pts[i - 1], b = pts[i % pts.length]; L.push(L[i - 1] + Math.hypot(b[0] - a[0], b[1] - a[1])); }
+    const total = L[L.length - 1];
+    let m = Math.max(3, Math.round(total / passo));
+    m = Math.min(m, MAX_PONTOS);
+    const out = []; let j = 0;
+    for (let k = 0; k < m; k++) {
+      const s = (k / m) * total;
+      while (L[j + 1] < s) j++;
+      const a = pts[j], b = pts[(j + 1) % pts.length], seg = L[j + 1] - L[j] || 1, u = (s - L[j]) / seg;
+      out.push([a[0] + (b[0] - a[0]) * u + 0.5, a[1] + (b[1] - a[1]) * u + 0.5]);
+    }
+    return { pontos: out, comprimento: total };
+  }
+  function coeficientes(z, N) {
+    const M = z.length, cs = [];
+    for (let n = -N; n <= N; n++) {
+      let re = 0, im = 0;
+      for (let k = 0; k < M; k++) { const a = (-2 * Math.PI * n * k) / M, ca = Math.cos(a), sa = Math.sin(a); re += z[k][0] * ca - z[k][1] * sa; im += z[k][0] * sa + z[k][1] * ca; }
+      cs.push({ n, re: re / M, im: im / M });
+    }
+    return cs;
+  }
+  function avaliar(cs, t) {
+    let x = 0, y = 0;
+    for (const c of cs) { const a = 2 * Math.PI * c.n * t, ca = Math.cos(a), sa = Math.sin(a); x += c.re * ca - c.im * sa; y += c.re * sa + c.im * ca; }
+    return [x, y];
+  }
+  function redesenhar() {
+    pararAnim();
+    const passo = +$('#fx-int').value, Npedido = +$('#fx-termos').value;
+    let totC = 0, totP = 0, Nusado = 0, erroSoma = 0, erroN = 0;
+    for (const a of st.areas) {
+      const { pontos } = amostrar(a.contorno, passo);
+      const N = Math.max(1, Math.min(Npedido, Math.floor((pontos.length - 1) / 2)));
+      a.pontos = pontos; a.N = N; a.cs = coeficientes(pontos, N);
+      const T = Math.max(400, pontos.length * 2);
+      a.curva = []; for (let k = 0; k < T; k++) a.curva.push(avaliar(a.cs, k / T));
+      for (let k = 0; k < pontos.length; k++) { const p = avaliar(a.cs, k / pontos.length); erroSoma += Math.hypot(p[0] - pontos[k][0], p[1] - pontos[k][1]); erroN++; }
+      totC += a.contorno.length; totP += pontos.length; Nusado = Math.max(Nusado, N);
+    }
+    $('#fx-st-areas').textContent = st.areas.length.toLocaleString('pt-BR');
+    $('#fx-st-contorno').textContent = st.areas.length ? totC.toLocaleString('pt-BR') : '—';
+    $('#fx-st-pontos').textContent = st.areas.length ? totP.toLocaleString('pt-BR') : '—';
+    $('#fx-st-termos').textContent = st.areas.length ? (2 * Nusado + 1) + ' (N = ' + Nusado + ')' : '—';
+    $('#fx-st-erro').textContent = erroN ? fmt1(erroSoma / erroN) + ' px' : '—';
+    $('#fx-formula').textContent = 'z(t) = Σ cₙ · e^(2πi·n·t), n = −' + (Nusado || 'N') + '…' + (Nusado || 'N') + (Nusado && Nusado < Npedido ? ' · menos termos que o pedido: faltam pontos (diminua o intervalo)' : '');
+    const ok = st.areas.length > 0;
+    ['fx-animar', 'fx-baixar', 'fx-copiar'].forEach((id) => { $('#' + id).disabled = !ok; });
+    if (!ok && st.cor) msg('Nenhuma área com essa cor. Aumente a tolerância, diminua o tamanho mínimo ou toque em outra cor.', 'bad'); else msg('');
+    desenhar();
+  }
+
+  // ---------- Desenho ----------
+  const cssCor = (nome) => getComputedStyle(document.documentElement).getPropertyValue(nome).trim();
+  function desenhar(extra) {
+    if (!st.px) return;
+    const { w, h } = st;
+    g.clearRect(0, 0, w, h);
+    g.globalAlpha = 0.55; g.drawImage(base, 0, 0); g.globalAlpha = 1;
+    const lw = Math.max(1.5, Math.max(w, h) / 320);
+    if ($('#fx-mascara').checked && st.maskCv) g.drawImage(st.maskCv, 0, 0);
+    for (const a of st.areas) {
+      if (!a.curva) continue;
+      if (extra && extra.area === a) continue;
+      linha(a.curva, lw, true);
+      if ($('#fx-pontos').checked) { g.fillStyle = '#ffffff'; for (const p of a.pontos) { g.beginPath(); g.arc(p[0], p[1], lw * 0.9, 0, 7); g.fill(); } g.fillStyle = '#ff008c'; for (const p of a.pontos) { g.beginPath(); g.arc(p[0], p[1], lw * 0.55, 0, 7); g.fill(); } }
+    }
+    if (extra) extra.desenho(lw);
+  }
+  function linha(pts, lw, fechar) {
+    if (pts.length < 2) return;
+    g.lineJoin = 'round'; g.lineCap = 'round';
+    for (const [cor, larg] of [['#ffffff', lw * 2.4], ['#1f47d6', lw]]) {
+      g.strokeStyle = cor; g.lineWidth = larg; g.beginPath(); g.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]);
+      if (fechar) g.closePath();
+      g.stroke();
+    }
+  }
+
+  // ---------- Animação dos círculos (epiciclos) da maior área ----------
+  const reduzir = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  $('#fx-animar').addEventListener('click', () => { if (st.anim) pararAnim(); else animar(); });
+  function pararAnim() { if (st.anim) { cancelAnimationFrame(st.anim.raf); st.anim = null; $('#fx-animar').textContent = 'Animar círculos'; desenhar(); } }
+  function animar() {
+    const a = st.areas[0]; if (!a || !a.cs) return;
+    const termos = a.cs.filter((c) => c.n !== 0).sort((p, q) => Math.hypot(q.re, q.im) - Math.hypot(p.re, p.im));
+    const c0 = a.cs.find((c) => c.n === 0);
+    const dur = reduzir ? 30000 : 9000, t0 = performance.now(), rastro = [];
+    $('#fx-animar').textContent = 'Parar animação';
+    const quadro = (agora) => {
+      const t = ((agora - t0) % dur) / dur;
+      if (rastro.length && t < rastro.tUlt) rastro.length = 0;
+      rastro.tUlt = t;
+      let x = c0.re, y = c0.im;
+      const centros = [];
+      for (const c of termos) {
+        const r = Math.hypot(c.re, c.im), ang = 2 * Math.PI * c.n * t + Math.atan2(c.im, c.re);
+        centros.push([x, y, r]);
+        x += r * Math.cos(ang); y += r * Math.sin(ang);
+      }
+      rastro.push([x, y]);
+      desenhar({ area: a, desenho: (lw) => {
+        g.lineWidth = Math.max(1, lw * 0.5);
+        for (let i = 0; i < centros.length; i++) {
+          const [cx, cy, r] = centros[i]; if (r < 0.4) break;
+          const nx = i + 1 < centros.length ? centros[i + 1] : [x, y];
+          g.strokeStyle = 'rgba(255,255,255,.55)'; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.stroke();
+          g.strokeStyle = 'rgba(20,24,34,.8)'; g.beginPath(); g.moveTo(cx, cy); g.lineTo(nx[0], nx[1]); g.stroke();
+        }
+        linha(rastro, lw, false);
+        g.fillStyle = '#ff008c'; g.beginPath(); g.arc(x, y, lw * 1.6, 0, 7); g.fill();
+      } });
+      st.anim.raf = requestAnimationFrame(quadro);
+    };
+    st.anim = { raf: requestAnimationFrame(quadro) };
+  }
+
+  // ---------- Saída ----------
+  function svgLinha() {
+    const paths = st.areas.map((a) => 'M ' + a.curva.map((p) => p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' L ') + ' Z');
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + st.w + ' ' + st.h + '" width="' + st.w + '" height="' + st.h + '">'
+      + '<!-- Linha por série de Fourier: cor ' + hex(st.cor) + ', tolerância ' + $('#fx-tol').value + '%, intervalo ' + $('#fx-int').value + ' px, N = ' + (st.areas[0] ? st.areas[0].N : 0) + ' -->'
+      + paths.map((d) => '<path d="' + d + '" fill="none" stroke="' + hex(st.cor) + '" stroke-width="2" stroke-linejoin="round"/>').join('') + '</svg>';
+  }
+  let downloads = null;
+  try { window.claude?.use?.('downloads').then((d) => { downloads = d; }).catch(() => {}); } catch (e) { /* fora do Claude */ }
+  $('#fx-baixar').addEventListener('click', async () => {
+    if (!st.areas.length) return;
+    const svg = svgLinha(), nome = 'linha-fourier.svg';
+    if (downloads) {
+      try { await downloads.save({ filename: nome, data: svg }); msg('SVG salvo.', 'ok'); }
+      catch (e) { msg(e && e.code === 'declined' ? 'Download cancelado.' : 'Não foi possível baixar aqui. Use "Copiar coeficientes".', e && e.code === 'declined' ? '' : 'bad'); }
+      return;
+    }
+    if (window.claude) { msg('Não foi possível baixar aqui.', 'bad'); return; }
+    const u = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+    const el = document.createElement('a'); el.href = u; el.download = nome; document.body.appendChild(el); el.click(); el.remove();
+    setTimeout(() => URL.revokeObjectURL(u), 5000);
+    msg('SVG baixado.', 'ok');
+  });
+  $('#fx-copiar').addEventListener('click', () => {
+    if (!st.areas.length) return;
+    const json = JSON.stringify({
+      cor: hex(st.cor), tolerancia_pct: +$('#fx-tol').value, intervalo_px: +$('#fx-int').value, largura: st.w, altura: st.h,
+      formula: 'z(t) = soma de c_n * exp(2*pi*i*n*t), t de 0 a 1; x = Re(z), y = Im(z)',
+      areas: st.areas.map((a) => ({ pontos: a.pontos.length, N: a.N, coeficientes: a.cs.map((c) => ({ n: c.n, re: +c.re.toFixed(4), im: +c.im.toFixed(4) })) })),
+    }, null, 1);
+    const fb = () => { const t = $('#fx-codigo'); t.value = json; t.hidden = false; t.focus(); t.select(); msg('Não deu para copiar sozinho. Os coeficientes estão selecionados abaixo: copie com Ctrl+C.'); };
+    try { navigator.clipboard.writeText(json).then(() => msg('Coeficientes copiados (JSON).', 'ok'), fb); } catch (e) { fb(); }
+  });
+
+  mostrarVals();
+  // se a imagem de exemplo já carregou antes deste script, usa ela
+  const ja = $('#img-orig');
+  if (ja && ja.complete && ja.naturalWidth && !st.px) carregar(ja, true);
+})();
+</script>
+

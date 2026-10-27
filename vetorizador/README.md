@@ -13,12 +13,20 @@ Transformar imagens bitmap (PNG, JPG, WebP, GIF, BMP) em SVG direto no navegador
 4. Compare arrastando a linha (original × vetor) ou veja só o vetor ou só os contornos.
 5. Baixe o SVG ou copie o código.
 
+### Linha por série de Fourier
+1. Toque numa cor da imagem (ou escolha no seletor de cor).
+2. **Tolerância de cor:** quanto a cor pode variar e ainda contar (0% = só a cor exata).
+3. **Intervalo de pontos:** distância, em pixels, entre os pontos tirados do contorno.
+4. **Termos da série:** quantas frequências usar (−N…N). Poucos termos = linha lisa; muitos = fiel ao contorno.
+5. Escolha só a maior área ou todas, veja a área encontrada e os pontos, anime os círculos (epiciclos), baixe a linha em SVG ou copie os coeficientes em JSON.
+
 ## Arquivos
 - `conteudo.html` — fonte da página (é o que vai para o artefato do Claude).
 - `index.html` — página completa para o GitHub Pages, gerada com `python3 gerar_index.py`. Não edite à mão.
 - Vetorização: [imagetracerjs 1.2.6](https://github.com/jankovicsandras/imagetracerjs) via CDN, com paleta inicial por k-means++ calculada na página.
 
 ## Próximos passos
+- Fourier: incluir os furos das áreas (contornos internos) e escolher várias cores de uma vez.
 - Processar em segundo plano (Web Worker) para imagens grandes não travarem a tela.
 - Editar a paleta (trocar ou juntar cores) antes de baixar.
 - Exportar também em PDF ou PNG ampliado.
