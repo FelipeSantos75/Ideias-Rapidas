@@ -250,6 +250,15 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
           <small>Distância entre os pontos tirados do contorno. Menor guarda mais detalhe; maior é mais rápido.</small>
         </div>
         <div class="ctl">
+          <div class="ctl-top"><label for="fx-qtd">Quantidade de pontos</label><output id="fx-qtd-v" for="fx-qtd"></output></div>
+          <input type="range" id="fx-qtd" min="1" max="100" step="1" value="100">
+          <div class="vz-actions">
+            <button type="button" class="btn" id="fx-menos">Reduzir 20%</button>
+            <button type="button" class="btn" id="fx-todos">Voltar a 100%</button>
+          </div>
+          <small>Parte dos pontos do contorno usada na série e na linha final. Os termos da série caem na mesma proporção, então a linha fica mais lisa e ignora ruído e detalhes miúdos.</small>
+        </div>
+        <div class="ctl">
           <div class="ctl-top"><label for="fx-termos">Termos da série</label><output id="fx-termos-v" for="fx-termos"></output></div>
           <input type="range" id="fx-termos" min="1" max="300" step="1" value="40">
           <small>Número de pares de círculos (frequências −n…+n). Limitado pela quantidade de pontos.</small>
@@ -278,7 +287,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
           <div><dt>Áreas</dt><dd id="fx-st-areas">—</dd></div>
           <div><dt>Furos</dt><dd id="fx-st-furos">—</dd></div>
           <div><dt>Pixels no contorno</dt><dd id="fx-st-contorno">—</dd></div>
-          <div><dt>Pontos amostrados</dt><dd id="fx-st-pontos">—</dd></div>
+          <div><dt>Pontos usados</dt><dd id="fx-st-pontos">—</dd></div>
           <div><dt>Termos usados</dt><dd id="fx-st-termos">—</dd></div>
           <div><dt>Erro médio</dt><dd id="fx-st-erro">—</dd></div>
         </dl>
@@ -544,12 +553,15 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   function msg(t, tipo) { const m = $('#fx-msg'); m.textContent = t; m.className = 'vz-msg' + (tipo ? ' ' + tipo : ''); }
 
   // ---------- Controles ----------
-  const vals = { 'fx-tol': (v) => v + '%', 'fx-int': (v) => v + ' px', 'fx-termos': (v) => v, 'fx-min': (v) => v + ' px²' };
+  const vals = { 'fx-tol': (v) => v + '%', 'fx-int': (v) => v + ' px', 'fx-termos': (v) => v, 'fx-min': (v) => v + ' px²', 'fx-qtd': (v) => v + '%' + (st.totBase ? ' · ' + Math.round(st.totBase * v / 100).toLocaleString('pt-BR') + ' de ' + st.totBase.toLocaleString('pt-BR') + ' pontos' : '') };
   const mostrarVals = () => Object.entries(vals).forEach(([id, f]) => { $('#' + id + '-v').textContent = f($('#' + id).value); });
   let tm = null;
   const agendar = (todo) => { clearTimeout(tm); tm = setTimeout(() => (todo ? calcular() : redesenhar()), 120); };
   ['fx-tol', 'fx-min'].forEach((id) => $('#' + id).addEventListener('input', () => { mostrarVals(); agendar(true); }));
-  ['fx-int', 'fx-termos'].forEach((id) => $('#' + id).addEventListener('input', () => { mostrarVals(); agendar(false); }));
+  ['fx-int', 'fx-termos', 'fx-qtd'].forEach((id) => $('#' + id).addEventListener('input', () => { mostrarVals(); agendar(false); }));
+  // cada toque tira 20% dos pontos atuais: 1000 → 800 → 640 → …
+  $('#fx-menos').addEventListener('click', () => { const q = $('#fx-qtd'); q.value = Math.max(1, Math.round(+q.value * 0.8)); mostrarVals(); redesenhar(); });
+  $('#fx-todos').addEventListener('click', () => { $('#fx-qtd').value = 100; mostrarVals(); redesenhar(); });
   ['fx-mascara', 'fx-pontos'].forEach((id) => $('#' + id).addEventListener('change', () => desenhar()));
   $('#fx-furos').addEventListener('change', () => calcular());
   $('#fx-areas').addEventListener('click', (e) => { const b = e.target.closest('[data-a]'); if (!b) return; st.modo = b.dataset.a; $('#fx-areas').querySelectorAll('.chip').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); calcular(); });
@@ -705,11 +717,12 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   }
 
   // ---------- Série de Fourier ----------
-  function amostrar(pts, passo) {
+  function amostrar(pts, passo, fator) {
     const L = [0];
     for (let i = 1; i <= pts.length; i++) { const a = pts[i - 1], b = pts[i % pts.length]; L.push(L[i - 1] + Math.hypot(b[0] - a[0], b[1] - a[1])); }
     const total = L[L.length - 1];
-    let m = Math.max(3, Math.round(total / passo));
+    const base = Math.max(3, Math.round(total / passo));
+    let m = Math.max(3, Math.round(base * (fator == null ? 1 : fator)));
     m = Math.min(m, MAX_PONTOS);
     const out = []; let j = 0;
     for (let k = 0; k < m; k++) {
@@ -718,7 +731,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
       const a = pts[j], b = pts[(j + 1) % pts.length], seg = L[j + 1] - L[j] || 1, u = (s - L[j]) / seg;
       out.push([a[0] + (b[0] - a[0]) * u + 0.5, a[1] + (b[1] - a[1]) * u + 0.5]);
     }
-    return { pontos: out, comprimento: total };
+    return { pontos: out, comprimento: total, base: Math.min(base, MAX_PONTOS) };
   }
   function coeficientes(z, N) {
     const M = z.length, cs = [];
@@ -735,11 +748,14 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
     return [x, y];
   }
   // Série de Fourier de um contorno (externo ou furo): pontos amostrados, coeficientes, curva e erro
-  function ajustar(c, passo, Npedido, tot) {
-    const { pontos } = amostrar(c.contorno, passo);
-    const N = Math.max(1, Math.min(Npedido, Math.floor((pontos.length - 1) / 2)));
+  function ajustar(c, passo, Npedido, tot, fator) {
+    const { pontos, base } = amostrar(c.contorno, passo, fator);
+    tot.B += base;
+    // a redução de pontos vale também para os termos, na mesma proporção
+    const Nalvo = Math.max(1, Math.round(Npedido * (fator == null ? 1 : fator)));
+    const N = Math.max(1, Math.min(Nalvo, Math.floor((pontos.length - 1) / 2)));
     c.pontos = pontos; c.N = N; c.cs = coeficientes(pontos, N);
-    const T = Math.max(400, pontos.length * 2);
+    const T = Math.max(12, pontos.length);
     c.curva = []; for (let k = 0; k < T; k++) c.curva.push(avaliar(c.cs, k / T));
     for (let k = 0; k < pontos.length; k++) { const p = avaliar(c.cs, k / pontos.length); tot.erroSoma += Math.hypot(p[0] - pontos[k][0], p[1] - pontos[k][1]); tot.erroN++; }
     tot.C += c.contorno.length; tot.P += pontos.length; tot.N = Math.max(tot.N, N);
@@ -747,20 +763,22 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   function redesenhar() {
     pararAnim();
     const passo = +$('#fx-int').value, Npedido = +$('#fx-termos').value;
-    const tot = { C: 0, P: 0, N: 0, erroSoma: 0, erroN: 0 };
+    const tot = { C: 0, P: 0, N: 0, B: 0, erroSoma: 0, erroN: 0 };
+    const fator = +$('#fx-qtd').value / 100;
     let nFuros = 0;
     for (const a of st.areas) {
-      ajustar(a, passo, Npedido, tot);
-      for (const f of a.furos) { ajustar(f, passo, Npedido, tot); nFuros++; }
+      ajustar(a, passo, Npedido, tot, fator);
+      for (const f of a.furos) { ajustar(f, passo, Npedido, tot, fator); nFuros++; }
     }
     const totC = tot.C, totP = tot.P, Nusado = tot.N, erroSoma = tot.erroSoma, erroN = tot.erroN;
     $('#fx-st-areas').textContent = st.areas.length.toLocaleString('pt-BR');
     $('#fx-st-furos').textContent = !st.areas.length ? '—' : $('#fx-furos').checked ? nFuros.toLocaleString('pt-BR') : 'desligado';
     $('#fx-st-contorno').textContent = st.areas.length ? totC.toLocaleString('pt-BR') : '—';
-    $('#fx-st-pontos').textContent = st.areas.length ? totP.toLocaleString('pt-BR') : '—';
+    st.totBase = tot.B; mostrarVals();
+    $('#fx-st-pontos').textContent = st.areas.length ? totP.toLocaleString('pt-BR') + (totP < tot.B ? ' de ' + tot.B.toLocaleString('pt-BR') : '') : '—';
     $('#fx-st-termos').textContent = st.areas.length ? (2 * Nusado + 1) + ' (N = ' + Nusado + ')' : '—';
     $('#fx-st-erro').textContent = erroN ? fmt1(erroSoma / erroN) + ' px' : '—';
-    $('#fx-formula').textContent = 'z(t) = Σ cₙ · e^(2πi·n·t), n = −' + (Nusado || 'N') + '…' + (Nusado || 'N') + (Nusado && Nusado < Npedido ? ' · menos termos que o pedido: faltam pontos (diminua o intervalo)' : '');
+    $('#fx-formula').textContent = 'z(t) = Σ cₙ · e^(2πi·n·t), n = −' + (Nusado || 'N') + '…' + (Nusado || 'N') + (Nusado && Nusado < Math.round(Npedido * fator) ? ' · menos termos que o pedido: faltam pontos (diminua o intervalo)' : '') + (fator < 1 ? ' · pontos e termos em ' + Math.round(fator * 100) + '%' : '');
     const ok = st.areas.length > 0;
     ['fx-animar', 'fx-baixar', 'fx-copiar'].forEach((id) => { $('#' + id).disabled = !ok; });
     if (!ok && st.cor) msg('Nenhuma área com essa cor. Aumente a tolerância, diminua o tamanho mínimo ou toque em outra cor.', 'bad'); else msg('');

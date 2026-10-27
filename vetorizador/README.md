@@ -17,9 +17,10 @@ Transformar imagens bitmap (PNG, JPG, WebP, GIF, BMP) em SVG direto no navegador
 1. Toque numa cor da imagem (ou escolha no seletor de cor).
 2. **Tolerância de cor:** quanto a cor pode variar e ainda contar (0% = só a cor exata).
 3. **Intervalo de pontos:** distância, em pixels, entre os pontos tirados do contorno.
-4. **Termos da série:** quantas frequências usar (−N…N). Poucos termos = linha lisa; muitos = fiel ao contorno.
-5. Escolha só a maior área ou todas, veja a área encontrada e os pontos, anime os círculos (epiciclos), baixe a linha em SVG ou copie os coeficientes em JSON.
-6. **Furos:** áreas sem a cor totalmente cercadas pela área (o miolo de um "O", por exemplo) viram contornos internos, em laranja, com série de Fourier própria. No SVG ficam como subcaminhos do mesmo caminho (`fill-rule="evenodd"`).
+4. **Quantidade de pontos:** quanto dos pontos do contorno usar (100% = todos). O botão **Reduzir 20%** tira 20% a cada toque (1000 → 800 → 640…); os termos da série caem na mesma proporção, deixando a linha mais lisa. A linha final (e o SVG) tem exatamente essa quantidade de pontos.
+5. **Termos da série:** quantas frequências usar (−N…N). Poucos termos = linha lisa; muitos = fiel ao contorno.
+6. Escolha só a maior área ou todas, veja a área encontrada e os pontos, anime os círculos (epiciclos), baixe a linha em SVG ou copie os coeficientes em JSON.
+7. **Furos:** áreas sem a cor totalmente cercadas pela área (o miolo de um "O", por exemplo) viram contornos internos, em laranja, com série de Fourier própria. No SVG ficam como subcaminhos do mesmo caminho (`fill-rule="evenodd"`).
 
 ## Arquivos
 - `conteudo.html` — fonte da página (é o que vai para o artefato do Claude).
