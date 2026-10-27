@@ -27,6 +27,8 @@ Transformar imagens bitmap (PNG, JPG, WebP, GIF, BMP) em SVG direto no navegador
 
 ### Separar cores nas bordas
 Ligado por padrão. Na borda entre duas cores, o serrilhado e a suavização criam pixels de mistura (laranja entre amarelo e vermelho), que viravam um objeto à parte. Para cada pixel, a página acha na janela 5×5 as duas cores mais diferentes; se o pixel for uma mistura delas (perto da reta entre as duas cores), ele passa para a cor pura mais próxima. Degradês suaves e terceiras cores de verdade ficam como estão. Cores praticamente iguais da paleta também são juntadas, para não picotar a mesma área.
+Roda em duas escalas: janela 5×5 para bordas finas e 7×7 para relevos e biselados largos (o branco que passa por rosas até o vermelho).
+No **Juntar degradês**, um pixel também não entra num objeto se a saturação ou o tom forem de outro "espectro" que a média do objeto (branco × cor viva, vermelho × laranja × amarelo).
 Teste (amarelo sobre vermelho com borda suave): sem separar, a paleta ganhava um laranja e as formas um contorno laranja; com a separação, só vermelho, amarelo e branco, 15 caminhos e 3,7 KB.
 
 ### Juntar degradês

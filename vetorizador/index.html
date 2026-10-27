@@ -656,7 +656,7 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
       const g = c.getContext('2d', { willReadFrequently: true });
       g.drawImage(st.img, 0, 0, w, h);
       let imgd = g.getImageData(0, 0, w, h);
-      if ($('#bordas').checked && !$('#degrade').checked) imgd = separarBordas(imgd, 60, 2);
+      if ($('#bordas').checked && !$('#degrade').checked) { imgd = separarBordas(imgd, 60, 2, 2); imgd = separarBordas(imgd, 80, 2, 3); }
       try {
         if ($('#degrade').checked) {
           const r = vetorizarDegrades(imgd);
@@ -734,7 +734,7 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
   // distantes (a e b). Se elas forem bem diferentes (borda) e o pixel estiver perto da reta entre a e b
   // (é uma mistura das duas, não uma terceira cor), ele passa para a cor pura mais próxima.
   // Degradês suaves ficam intactos: numa janela tão pequena a variação fica abaixo do limite.
-  function separarBordas(img, limite, passadas) {
+  function separarBordas(img, limite, passadas, raio = 2) {
     const { width: w, height: h } = img;
     let src = new Uint8ClampedArray(img.data);
     const L2 = limite * limite;
@@ -743,7 +743,7 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
       let mudou = 0;
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
         const j = (y * w + x) * 4, pr = src[j], pg = src[j + 1], pb = src[j + 2], pa = src[j + 3];
-        const y0 = Math.max(0, y - 2), y1 = Math.min(h - 1, y + 2), x0 = Math.max(0, x - 2), x1 = Math.min(w - 1, x + 2);
+        const y0 = Math.max(0, y - raio), y1 = Math.min(h - 1, y + raio), x0 = Math.max(0, x - raio), x1 = Math.min(w - 1, x + raio);
         // a = mais distante do pixel; b = mais distante de a
         let ia = -1, da = -1;
         for (let yy = y0; yy <= y1; yy++) for (let xx = x0; xx <= x1; xx++) {
@@ -863,11 +863,26 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
     }
     return d + 'Z';
   }
+  // Saturação (croma) e tom de uma cor RGB
+  function crTom(r, g, b) {
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), c = mx - mn;
+    let hh = 0;
+    if (c > 0) { if (mx === r) hh = ((g - b) / c) % 6; else if (mx === g) hh = (b - r) / c + 2; else hh = (r - g) / c + 4; hh *= 60; if (hh < 0) hh += 360; }
+    return [c, hh];
+  }
+  // Barra a junção quando a cor do pixel e a média do objeto são "espectros" diferentes:
+  // saturação muito diferente (branco/cinza × cor viva) ou, com as duas saturadas, tom diferente (vermelho × laranja × amarelo).
+  function corDiferente(r1, g1, b1, r2, g2, b2) {
+    const [c1, h1] = crTom(r1, g1, b1), [c2, h2] = crTom(r2, g2, b2);
+    if (Math.abs(c1 - c2) > 75) return true;
+    if (c1 > 55 && c2 > 55) { let dh = Math.abs(h1 - h2); if (dh > 180) dh = 360 - dh; if (dh > 22) return true; }
+    return false;
+  }
   function vetorizarDegrades(imgd0) {
     const { width: w, height: h } = imgd0, N = w * h;
     const raio = Math.max(1, +$('#desfoque').value);
     let img = desfocar(imgd0, raio);
-    if ($('#bordas').checked) img = separarBordas(img, Math.max(60, 8 * +$('#degrade-tol').value), 3);
+    if ($('#bordas').checked) { const L = Math.max(60, 8 * +$('#degrade-tol').value); img = separarBordas(img, L, 3, 2); img = separarBordas(img, L + 20, 2, 3); }
     const D = img.data;
     const tol = +$('#degrade-tol').value, t2 = tol * tol, lim2 = 150 * 150; // passo local; distância máxima à cor média da região // passo local e distância total máxima ao início
     const lab = new Int32Array(N), fila = new Int32Array(N);
@@ -889,6 +904,7 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
           if (dr * dr + dg * dg + db * db + da * da > t2) continue;
           const er = D[k] - mr / cont, eg = D[k + 1] - mg / cont, eb = D[k + 2] - mb / cont, ea = D[k + 3] - ma / cont;
           if (er * er + eg * eg + eb * eb + ea * ea > lim2) continue;
+          if (corDiferente(D[k], D[k + 1], D[k + 2], mr / cont, mg / cont, mb / cont)) continue;
           lab[q] = id; fila[fim++] = q;
           mr += D[k]; mg += D[k + 1]; mb += D[k + 2]; ma += D[k + 3]; cont++;
         }
