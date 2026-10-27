@@ -384,10 +384,11 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
           <input type="range" id="tamanho" min="200" max="2000" step="100">
           <small>Maior é mais fiel, porém mais lento. O SVG final pode ser ampliado sem perder qualidade.</small>
         </div>
-        <label class="chk"><input type="checkbox" id="degrade"> <span>Juntar degradês (cada objeto com degradê vira uma forma só, preenchida em degradê)</span></label>
+        <label class="chk"><input type="checkbox" id="degrade"> <span>Juntar degradês (cada objeto com degradê vira uma forma só, em cor chapada)</span></label>
         <div class="ctl" id="degrade-ctl" hidden>
           <div class="ctl-top"><label for="degrade-tol">Tolerância do degradê</label><output id="degrade-tol-v" for="degrade-tol"></output></div>
           <input type="range" id="degrade-tol" min="2" max="40" step="1" value="6">
+          <label class="chk"><input type="checkbox" id="degrade-preenche"> <span>Preencher com o degradê (em vez de cor chapada)</span></label>
           <small>Quanto a cor pode mudar de um pixel para o vizinho e ainda ser o mesmo objeto. Mais alto junta degradês mais bruscos; alto demais junta objetos diferentes que se tocam sem borda nítida. Neste modo o ajuste "Cores" não é usado.</small>
         </div>
         <label class="chk"><input type="checkbox" id="fundo"> <span>Remover o fundo (a cor dos cantos da imagem)</span></label>
@@ -580,6 +581,7 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
   const mostrarDegrade = () => { $('#degrade-ctl').hidden = !$('#degrade').checked; $('#degrade-tol-v').textContent = $('#degrade-tol').value; $('#cores').disabled = $('#degrade').checked; };
   $('#degrade').addEventListener('change', () => { mostrarDegrade(); agendar(); });
   $('#degrade-tol').addEventListener('input', () => { mostrarDegrade(); agendar(); });
+  $('#degrade-preenche').addEventListener('change', () => agendar());
   mostrarDegrade();
   $('#tamanho').value = 800;
 
@@ -651,7 +653,7 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
           const r = vetorizarDegrades(imgd);
           if (minha !== gen) return;
           mostrar(r.svg, r.td, r.removida, w, h, performance.now() - t0);
-          $('#st-cores').textContent = r.td.palette.length + ' formas · ' + r.nDegrade + ' em degradê';
+          $('#st-cores').textContent = r.td.palette.length + ' formas' + ($('#degrade-preenche').checked ? ' · ' + r.nDegrade + ' em degradê' : ' chapadas');
           return;
         }
         const op = opcoes();
@@ -886,7 +888,7 @@ input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
         const gx = 0.3 * bx[0] + 0.59 * bx[1] + 0.11 * bx[2], gy = 0.3 * by[0] + 0.59 * by[1] + 0.11 * by[2], gm = Math.hypot(gx, gy);
         const ext = 2 * Math.sqrt(Math.max(vxx, vyy)) * 2;
         const delta = Math.hypot(...bx.map((v, ch) => Math.hypot(v, by[ch]))) * ext;
-        if (gm > 0 && delta > 14) grad = { ux: gx / gm, uy: gy / gm, mx, my, tmin: Infinity, tmax: -Infinity, bins: Array.from({ length: K }, () => [0, 0, 0, 0, 0]) };
+        if ($('#degrade-preenche').checked && gm > 0 && delta > 14) grad = { ux: gx / gm, uy: gy / gm, mx, my, tmin: Infinity, tmax: -Infinity, bins: Array.from({ length: K }, () => [0, 0, 0, 0, 0]) };
       }
       info.set(i, { media, grad, area: n, bb: [r.x0, r.y0, r.x1, r.y1], ini: r.ini });
     }
