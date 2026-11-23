@@ -1,6 +1,6 @@
 # Multi_User_FH — Plano do projeto
 
-Postos de trabalho baratos (Raspberry Pi, mini PC, celular reaproveitado…): o aparelho liga direto no app **Multi_User_FH**, o usuário faz login e entra numa **sessão remota (RDP)** num servidor Windows compartilhado. O app e o Manager central cadastram os aparelhos, acompanham as sessões e guardam o histórico.
+Postos de trabalho baratos (Raspberry Pi, mini PC, celular reaproveitado…): o aparelho liga direto no app **Multi_User_FH**, o usuário faz login e usa **apenas os programas autorizados pela firma (RemoteApp)**, que rodam num servidor Windows compartilhado. O app e o Manager central cadastram os aparelhos, acompanham as sessões e guardam o histórico.
 
 > **Princípio do projeto:** nada está escrito em pedra. O servidor e o Manager são únicos, e o **cliente pode rodar em vários tipos de hardware e sistema**, as "trilhas". Testamos cada trilha e escolhemos pelo custo, pela estabilidade e pela experiência do usuário.
 
@@ -23,7 +23,27 @@ Dica: com postos fixos e turnos compartilhando o aparelho, a **CAL por dispositi
 - Função **RDS Session Host** e servidor de licenciamento RDS.
 - **GPOs**: tempo de vida da sessão desconectada (ex.: 2 h), logoff de sessão ociosa, redirecionamentos permitidos (áudio, impressora, USB), certificado válido no RDP.
 - **Perfis** no servidor (perfis móveis ou FSLogix quando houver mais de um Session Host).
-- Opcional: **RD Gateway** (ou VPN) para postos fora da rede local e **Connection Broker** para usar 2 ou mais servidores.
+- **Implantação RDS completa** (Gerenciador do Servidor): **Session Host + Connection Broker** (e, se quiser, **Web Access**). O Connection Broker é necessário para publicar os RemoteApps e permite crescer para vários servidores.
+- Opcional: **RD Gateway** (ou VPN) para postos fora da rede local.
+
+### Modo padrão: RemoteApp
+O usuário **não recebe o desktop do Windows**. Ele vê só os **programas autorizados pela firma**, cada um numa janela, sem menu Iniciar, sem Explorer e sem desktop.
+
+| Perfil | Modo |
+|---|---|
+| **Usuários comuns** | **RemoteApp** (padrão): só os apps publicados para o seu grupo |
+| **Administradores / TI** | Desktop completo (permissão separada) |
+
+**Configuração no servidor:**
+- Criar uma **coleção de sessão** e **publicar os programas** (ERP, Excel, navegador, etc.).
+- **Liberar cada RemoteApp por grupo do AD**. Exemplo: Financeiro vê ERP + Excel; Atendimento vê só o CRM.
+- Todos os apps de um usuário rodam **na mesma sessão** no servidor: ele abre vários ao mesmo tempo, copia e cola entre eles e, ao reconectar, encontra tudo como deixou.
+- Para testes rápidos sem Connection Broker, dá para publicar pelo registro (`TSAppAllowList`). Em produção, usar a coleção.
+
+**Segurança (obrigatório junto com o RemoteApp):** o RemoteApp sozinho **não é uma barreira de segurança**. O usuário pode tentar abrir outros programas a partir dos liberados, por exemplo pela janela "Abrir arquivo", por links ou por macros. Por isso:
+- **AppLocker** (ou **WDAC**) no servidor: só os executáveis autorizados rodam para os usuários comuns.
+- **GPOs**: bloquear o prompt de comando, o PowerShell, o painel de controle, o regedit e o Gerenciador de Tarefas, esconder ou restringir os discos do servidor e desativar macros não assinadas.
+- Pastas de trabalho em compartilhamento controlado, com permissões por grupo.
 
 ### Dimensionamento (uso de escritório)
 | Usuários simultâneos | vCPU | RAM | Disco |
@@ -59,13 +79,15 @@ Todas as trilhas fazem as mesmas coisas, cada uma com a sua tecnologia:
 
 1. Iniciar direto no app em **modo quiosque**, sem desktop, sem atalhos e sem saída para o sistema.
 2. Mostrar a **tela de login**: usuário e senha, nome do posto e status da rede e do servidor.
-3. Abrir a **sessão RDP em tela cheia** com NLA. As credenciais ficam só em memória e **nunca vão na linha de comando**.
-4. Quando a sessão termina (logoff, desconexão ou queda de rede), **voltar para o login** e limpar os campos.
-5. Falar com o **Manager**: registro do aparelho por serial ou MAC, download da configuração, heartbeat a cada 30 a 60 s e envio de logs.
-6. **Atualizar-se** com pacotes assinados vindos do Manager.
+3. Depois do login, mostrar a **tela inicial do Multi_User_FH**, com a identidade visual da firma e **os ícones dos apps liberados para aquele usuário** (lista vinda do Manager). Ela tem ainda os botões **Sair** (logoff) e **Bloquear** (desconectar).
+4. Ao clicar num ícone, abrir o programa como **RemoteApp** com NLA. As credenciais ficam só em memória e **nunca vão na linha de comando**. Os apps seguintes reaproveitam a mesma sessão no servidor.
+5. **Administradores** podem abrir o **desktop completo** em tela cheia.
+6. Quando o usuário sai (ou a sessão cai e não reconecta), **voltar para o login** e limpar tudo.
+7. Falar com o **Manager**: registro do aparelho por serial ou MAC, download da configuração, heartbeat a cada 30 a 60 s e envio de logs.
+8. **Atualizar-se** com pacotes assinados vindos do Manager.
 
 ### Sessões salvas
-- O **RDS mantém viva a sessão desconectada**. O usuário entra de novo, em qualquer posto, e volta para onde estava.
+- O **RDS mantém viva a sessão desconectada**, com os RemoteApps abertos. O usuário entra de novo, em qualquer posto, e os programas voltam como estavam.
 - O **Manager** registra quem entrou, onde, quando e por quanto tempo, e permite derrubar ou encerrar sessões.
 
 ---
@@ -77,16 +99,21 @@ Todas as trilhas fazem as mesmas coisas, cada uma com a sua tecnologia:
 |---|---|
 | Hardware | **Raspberry Pi 5 / Pi 4 (4 GB)**, **mini PC Intel N100** (Beelink, GMKtec…) ou **thin client usado** (HP t620/t630, Dell Wyse 5070) |
 | Sistema | Raspberry Pi OS Lite 64-bit (Pi) ou Debian netinst mínimo (x86) |
-| Quiosque | **cage** (compositor Wayland de um app só), autologin pelo systemd |
-| Motor RDP | **FreeRDP 3** (`sdl-freerdp3` / `xfreerdp3`), com credenciais via `/from-stdin` |
+| Quiosque | **Xorg + Openbox mínimo** (sem painel, sem menu, atalhos desativados), autologin pelo systemd. O X11 é necessário porque o modo RemoteApp do FreeRDP (`/app`) funciona melhor no `xfreerdp3` |
+| Motor RDP | **FreeRDP 3** (`xfreerdp3`), com credenciais via `/from-stdin`. RemoteApp por `/app`, desktop completo (admins) por `/f` |
 | App | **Python 3 + PySide6 (Qt/QML)** |
 | Proteção | root somente leitura (overlayfs), watchdog, troca de TTY desativada, SSH só por chave |
 | Distribuição | imagem gerada com **pi-gen** (Pi) ou preseed/Ansible (x86) |
 
-Exemplo de comando:
+Exemplos de comando:
 ```bash
-sdl-freerdp3 /v:servidor.local /d:EMPRESA /u:joao /from-stdin \
-  /f /gfx /sound /microphone /dynamic-resolution /auto-reconnect
+# RemoteApp (padrão)
+xfreerdp3 /v:servidor.local /d:EMPRESA /u:joao /from-stdin \
+  /app:program:"||ERP" /gfx /sound /microphone /auto-reconnect
+
+# Desktop completo (administradores)
+xfreerdp3 /v:servidor.local /d:EMPRESA /u:admin /from-stdin \
+  /f /gfx /sound /dynamic-resolution /auto-reconnect
 ```
 
 **Pontos fortes:** o hardware fica barato (principalmente o thin client usado), é estável e sem custo de licença no posto.
@@ -103,6 +130,7 @@ sdl-freerdp3 /v:servidor.local /d:EMPRESA /u:joao /from-stdin \
 | Sistema | Android original sem os apps desnecessários. Opcional: ROM leve (LineageOS) a ser testada |
 | Quiosque | **Device Owner** (`adb shell dpm set-device-owner …`) com **Lock Task Mode** |
 | Motor RDP | biblioteca **FreeRDP para Android** (base do aFreeRDP, licença Apache 2.0) embutida no app |
+| RemoteApp | **a conferir**: o suporte do FreeRDP para Android a janelas RemoteApp é limitado. Alternativas: abrir cada RemoteApp em tela cheia (um app por vez, alternando pela tela inicial) ou uma sessão restrita que já começa direto num programa |
 | App | **Kotlin** (Jetpack Compose) |
 | Bateria | ativar **"Proteger bateria"** (limite de 85 %), disponível no S10. No S9, conferir se existe |
 
@@ -126,7 +154,7 @@ sdl-freerdp3 /v:servidor.local /d:EMPRESA /u:joao /from-stdin \
 
 | Item | Escolha |
 |---|---|
-| Motor RDP | **cliente RDP nativo do Windows** (controle ActiveX/COM do `mstsc`, ou `mstsc` com arquivo `.rdp`) |
+| Motor RDP | **cliente RDP nativo do Windows** (controle ActiveX/COM do `mstsc`, ou `mstsc` com arquivo `.rdp`). **RemoteApp nativo**, com `remoteapplicationmode:i:1` no `.rdp`: é a trilha com o melhor suporte a RemoteApp |
 | App | **C# / .NET 8 (WPF ou WinUI 3) para ARM64** |
 | Quiosque | **Shell Launcher / Assigned Access**: o app substitui o Explorer |
 | Licença | 1 licença de Windows 11 por aparelho |
@@ -157,7 +185,10 @@ Reaproveitar a placa do Redmi Note 8 Pro (MediaTek Helio G90T), ligando o conect
 
 ### Fase 0 — Base de testes (1 a 2 semanas)
 - [ ] Servidor de teste: **Windows Server em avaliação (180 dias)** com RDS Session Host e licenciamento RDS em avaliação.
-- [ ] 3 ou 4 usuários de teste e GPOs básicas.
+- [ ] Implantação RDS com **Connection Broker** e uma **coleção RemoteApp** com 2 ou 3 programas publicados.
+- [ ] 2 grupos de teste com apps diferentes (ex.: "Financeiro" e "Atendimento") e 1 administrador com desktop completo.
+- [ ] **AppLocker** e GPOs de bloqueio básicas.
+- [ ] 3 ou 4 usuários de teste.
 - [ ] Definir o **roteiro de teste padrão**, que todas as trilhas seguem (seção 5).
 
 ### Fase 1 — Testes das trilhas (2 a 4 semanas, em paralelo)
@@ -175,11 +206,12 @@ Cada trilha começa com **um aparelho** e, sempre que existir, um cliente RDP pr
 ### Fase 2 — Manager central (3 a 4 semanas)
 - [ ] **API** (Python FastAPI + PostgreSQL ou SQLite): cadastro e aprovação de aparelhos, configuração por posto ou grupo, heartbeat, logs e versões do app.
 - [ ] **Agente no Windows Server** (PowerShell ou serviço): lê as sessões (`Get-RDUserSession` / `qwinsta`), envia para a API e executa logoff ou desconexão sob comando.
-- [ ] **Painel web**: postos online/offline, quem está logado e onde, sessões desconectadas, ações (derrubar sessão, logoff, reiniciar posto) e histórico.
+- [ ] **Catálogo de apps**: o agente lê os RemoteApps publicados e os grupos permitidos (`Get-RDRemoteApp`) e os ícones. O Manager monta a **lista de apps de cada usuário** e o cliente desenha a tela inicial. App novo publicado no servidor aparece nos postos sozinho.
+- [ ] **Painel web**: postos online/offline, quem está logado e onde, **quais apps estão abertos**, sessões desconectadas, ações (derrubar sessão, logoff, reiniciar posto) e histórico.
 - [ ] **Protocolo do cliente documentado** (OpenAPI), para todas as trilhas usarem o mesmo.
 
 ### Fase 3 — App cliente da trilha principal (3 a 4 semanas)
-- [ ] Tela de login, sessão RDP e volta automática para o login.
+- [ ] Tela de login, **tela inicial com os ícones dos apps**, abertura de RemoteApps, desktop completo para admins e volta automática para o login.
 - [ ] Integração com o Manager (registro, configuração e heartbeat).
 - [ ] Modo quiosque travado e atualização automática.
 - [ ] Imagem ou instalador para replicar os postos.
@@ -213,6 +245,9 @@ Cada trilha começa com **um aparelho** e, sempre que existir, um cliente RDP pr
 | 4 | Carga ou alimentação durante o uso | o aparelho não descarrega em 8 h |
 | 5 | Login RDP com NLA | < 10 s até o desktop |
 | 6 | Office e navegador (rolagem e digitação) | fluido |
+| 6a | **RemoteApp**: abrir 2 ou 3 apps, alternar entre as janelas, copiar e colar entre eles | janelas corretas, sem bordas quebradas |
+| 6b | **RemoteApp**: reconectar em outro posto | apps voltam como estavam |
+| 6c | **Fuga do RemoteApp**: tentar abrir o cmd ou o Explorer pela janela "Abrir arquivo" | bloqueado pelo AppLocker |
 | 7 | Vídeo (YouTube a 720p) | assistível |
 | 8 | Áudio (saída e microfone) | funciona |
 | 9 | Impressora e USB redirecionados (se precisar) | funciona |
@@ -250,6 +285,8 @@ Multi_User_FH/
 | Bateria inchando (trilhas B e D) | "Proteger bateria" (85 %), ou alimentação direta sem bateria na trilha D; boa ventilação. |
 | Port de Windows ARM sem driver de vídeo externo (trilha C) | Testar o vídeo antes de qualquer outra coisa e escolher o aparelho pelo resultado. |
 | Cartão SD corromper (trilha A) | Root somente leitura, SSD e watchdog. |
+| Usuário escapar do RemoteApp e abrir outros programas | AppLocker/WDAC + GPOs de bloqueio, testados no roteiro (6c). |
+| Cliente sem bom suporte a RemoteApp (trilha B) | Usar RemoteApp em tela cheia (um por vez) ou sessão que começa direto num programa. |
 | Senha exposta | Credenciais só em memória, NLA obrigatório, TLS e certificado válido. |
 | Servidor único é ponto de falha | Backup e snapshot; depois, um segundo Session Host com Connection Broker. |
 | Vários tipos de hardware para manter | Contrato comum com o Manager, e só 1 ou 2 trilhas em produção. |
@@ -265,11 +302,12 @@ Multi_User_FH/
 5. Que periféricos são necessários: impressora, leitor de código de barras, webcam, áudio?
 6. O servidor será físico, uma VM local ou ficará na nuvem?
 7. Quais aparelhos você já tem disponíveis para os testes da Fase 1?
+8. Quais programas serão publicados como RemoteApp, e para quais grupos?
 
 ---
 
 ## 9. Próximo passo imediato
 
-1. Montar o **servidor de teste** (Fase 0).
+1. Montar o **servidor de teste com a coleção RemoteApp** (Fase 0).
 2. Conseguir **um aparelho de cada trilha** que for testar primeiro. Sugestão: **Galaxy S10 + hub** (B) e **Pi 5 ou thin client** (A). A trilha C entra assim que houver um Snapdragon compatível.
 3. Rodar o **roteiro de teste** e preencher a tabela comparativa.
