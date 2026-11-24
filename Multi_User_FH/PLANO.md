@@ -24,7 +24,7 @@ Dica: com postos fixos e turnos compartilhando o aparelho, a **CAL por dispositi
 - **GPOs**: tempo de vida da sessão desconectada (ex.: 2 h), logoff de sessão ociosa, redirecionamentos permitidos (áudio, impressora, USB), certificado válido no RDP.
 - **Perfis** no servidor (perfis móveis ou FSLogix quando houver mais de um Session Host).
 - **Implantação RDS completa** (Gerenciador do Servidor): **Session Host + Connection Broker** (e, se quiser, **Web Access**). O Connection Broker é necessário para publicar os RemoteApps e permite crescer para vários servidores.
-- Opcional: **RD Gateway** (ou VPN) para postos fora da rede local.
+- **Acesso pela internet** sem abrir portas: **Cloudflare Tunnel** (padrão) ou, como alternativa, RD Gateway ou VPN. Veja a seção 3.
 
 ### Modo padrão: RemoteApp
 O usuário **não recebe o desktop do Windows**. Ele vê só os **programas autorizados pela firma**, cada um numa janela, sem menu Iniciar, sem Explorer e sem desktop.
@@ -65,7 +65,7 @@ Regra de bolso: de 2 a 4 GB de RAM por usuário e 1 vCPU para cada 2 ou 3 usuár
           │  Trilha C: Windows 11 ARM (Snapdragon / Pi com UEFI)       │
           │  Trilha D: Note 8 Pro com ponte DSI→HDMI (pesquisa)        │
           └─────────────┬──────────────────────────────┬───────────────┘
-                        │ RDP (3389 / Gateway 443)     │ HTTPS (config, heartbeat)
+                        │ RDP (LAN ou Cloudflare)      │ HTTPS (config, heartbeat)
                         ▼                              ▼
    ┌──────── Windows Server + RDS ────────┐   ┌──────── Multi_User_FH Manager ────────┐
    │ Sessões dos usuários                 │◄──┤ API + painel web                       │
@@ -83,8 +83,9 @@ Todas as trilhas fazem as mesmas coisas, cada uma com a sua tecnologia:
 4. Ao clicar num ícone, abrir o programa como **RemoteApp** com NLA. As credenciais ficam só em memória e **nunca vão na linha de comando**. Os apps seguintes reaproveitam a mesma sessão no servidor.
 5. **Administradores** podem abrir o **desktop completo** em tela cheia.
 6. Quando o usuário sai (ou a sessão cai e não reconecta), **voltar para o login** e limpar tudo.
-7. Falar com o **Manager**: registro do aparelho por serial ou MAC, download da configuração, heartbeat a cada 30 a 60 s e envio de logs.
-8. **Atualizar-se** com pacotes assinados vindos do Manager.
+7. Falar com o **Manager**: registro do aparelho por serial ou MAC, download da configuração (incluindo o **token Cloudflare do posto**), heartbeat a cada 30 a 60 s (com o **status do túnel**) e envio de logs.
+8. **Conectividade automática**: detectar se está na rede local ou na internet e, se estiver fora, subir o túnel Cloudflare antes de abrir o RDP (seção 3).
+9. **Atualizar-se** com pacotes assinados vindos do Manager.
 
 ### Sessões salvas
 - O **RDS mantém viva a sessão desconectada**, com os RemoteApps abertos. O usuário entra de novo, em qualquer posto, e os programas voltam como estavam.
@@ -92,7 +93,55 @@ Todas as trilhas fazem as mesmas coisas, cada uma com a sua tecnologia:
 
 ---
 
-## 3. As trilhas de cliente
+## 3. Conectividade: rede local e internet
+
+O posto pode estar **na mesma rede do servidor** (escritório) ou **em qualquer lugar com internet** (casa, filial). Em nenhum caso a porta 3389 fica exposta na internet.
+
+| Cenário | Como conecta |
+|---|---|
+| **Rede local** | RDP direto no IP interno do servidor |
+| **Internet (padrão)** | **Cloudflare Tunnel + Cloudflare Access (Zero Trust)** |
+| Internet (alternativas) | RD Gateway (443) publicado pelo túnel, ou VPN (WireGuard etc.) |
+
+### Cloudflare Tunnel: arquitetura
+```
+Posto (casa / filial) ──internet──► Cloudflare (PoP no Brasil) ◄──túnel de SAÍDA── cloudflared (Windows Server)
+                                         │
+                               Cloudflare Access: o posto tem token válido?
+```
+- No servidor, o **`cloudflared`** roda como serviço do Windows e abre uma conexão **de saída**. Não precisa de **IP fixo**, **redirecionamento de porta** nem **porta aberta** no roteador.
+- Hostname publicado, por exemplo `rdp.suafirma.com.br` → `tcp://localhost:3389`. O Manager também pode ser publicado pelo túnel (`manager.suafirma.com.br`).
+- Requisitos: um **domínio gerenciado na Cloudflare** e o **plano Zero Trust gratuito** (até 50 usuários).
+
+### Como cada trilha conecta pela internet
+| Trilha | Método | Como funciona |
+|---|---|---|
+| **A — Linux** | `cloudflared access rdp` | O app inicia `cloudflared access rdp --hostname rdp.suafirma.com.br --url localhost:13389` com o service token do posto, e o FreeRDP conecta em `localhost:13389` |
+| **B — Android** | **Cliente WARP** (rede privada Zero Trust) | O WARP conecta o aparelho à rede privada do túnel e o app acessa o IP interno do servidor. O WARP é registrado na organização Zero Trust |
+| **C — Windows ARM** | `cloudflared access rdp` (ou WARP) | O mesmo da trilha A, com o `mstsc` apontando para `localhost:13389` |
+| D — Pesquisa | o mesmo da trilha B | — |
+
+Extra, fora do app: o Cloudflare Access oferece **RDP no navegador**, útil para um acesso eventual da TI sem cliente instalado.
+
+### Segurança em camadas
+1. **Cloudflare Access (o aparelho):** cada posto tem um **service token próprio**, gerado e distribuído pelo Manager. Se um posto for roubado ou perdido, **o token é revogado no painel e o acesso cai na hora**. Para acessos fora dos postos (TI, admin), exigir login por e-mail ou SSO e, se quiser, verificar o estado do aparelho.
+2. **Windows (o usuário):** NLA, RemoteApp, AppLocker e GPOs (seção 1).
+3. **Servidor:** firewall do Windows aceitando o RDP **só do localhost (cloudflared) e da rede local**.
+
+### Pontos de atenção
+- **No túnel, o RDP passa só por TCP** (sem o transporte UDP do RDP). Vídeo e animações ficam um pouco menos fluidos, mas para escritório funciona bem. Medir no roteiro (testes 14 a 16).
+- **Latência:** depende do provedor do posto e do PoP da Cloudflare (São Paulo, Rio e outros). Meta: < 60 ms.
+- **Dependência da Cloudflare:** se ela tiver problemas, o acesso remoto cai, mas a rede local continua funcionando. Deixar a **VPN ou o RD Gateway documentados como plano B**.
+- **WARP no Linux ARM (Pi):** conferir o suporte. Na trilha A o padrão é o `cloudflared`, que tem build ARM64.
+
+### Detecção automática no app
+1. O posto liga e o app testa se o servidor responde no IP interno (rede local).
+2. Se responder, conecta direto. Se não, inicia o túnel (`cloudflared` ou WARP) com o token do posto.
+3. O status (LAN, Túnel OK ou Sem conexão) aparece na tela de login e é enviado ao Manager.
+
+---
+
+## 4. As trilhas de cliente
 
 ### Trilha A — Linux leve (Raspberry Pi, mini PC N100, thin client)
 | Item | Escolha |
@@ -181,7 +230,7 @@ Reaproveitar a placa do Redmi Note 8 Pro (MediaTek Helio G90T), ligando o conect
 
 ---
 
-## 4. Fases do projeto
+## 5. Fases do projeto
 
 ### Fase 0 — Base de testes (1 a 2 semanas)
 - [ ] Servidor de teste: **Windows Server em avaliação (180 dias)** com RDS Session Host e licenciamento RDS em avaliação.
@@ -189,7 +238,9 @@ Reaproveitar a placa do Redmi Note 8 Pro (MediaTek Helio G90T), ligando o conect
 - [ ] 2 grupos de teste com apps diferentes (ex.: "Financeiro" e "Atendimento") e 1 administrador com desktop completo.
 - [ ] **AppLocker** e GPOs de bloqueio básicas.
 - [ ] 3 ou 4 usuários de teste.
-- [ ] Definir o **roteiro de teste padrão**, que todas as trilhas seguem (seção 5).
+- [ ] **Cloudflare Tunnel**: domínio na Cloudflare, `cloudflared` como serviço no servidor, hostname `rdp.` publicado, aplicação no Access e 1 service token de teste.
+- [ ] Firewall do Windows: RDP só do localhost e da LAN.
+- [ ] Definir o **roteiro de teste padrão**, que todas as trilhas seguem (seção 6).
 
 ### Fase 1 — Testes das trilhas (2 a 4 semanas, em paralelo)
 Cada trilha começa com **um aparelho** e, sempre que existir, um cliente RDP pronto antes de escrever código.
@@ -201,19 +252,22 @@ Cada trilha começa com **um aparelho** e, sempre que existir, um cliente RDP pr
 | C | 1 OnePlus 6T, Poco F1 ou Pad 5 (ou um Pi 4 com WoR) | instalar Windows ARM, confirmar o vídeo externo e testar o `mstsc` |
 | D | 1 Note 8 Pro + kit de desenvolvimento LT8912B | levantar a pinagem do DSI e compilar o kernel (sem prazo fixo) |
 
-**Entregável:** uma tabela comparativa (seção 5) e a escolha da trilha principal e da secundária.
+**Entregável:** uma tabela comparativa (seção 6) e a escolha da trilha principal e da secundária.
 
 ### Fase 2 — Manager central (3 a 4 semanas)
 - [ ] **API** (Python FastAPI + PostgreSQL ou SQLite): cadastro e aprovação de aparelhos, configuração por posto ou grupo, heartbeat, logs e versões do app.
 - [ ] **Agente no Windows Server** (PowerShell ou serviço): lê as sessões (`Get-RDUserSession` / `qwinsta`), envia para a API e executa logoff ou desconexão sob comando.
 - [ ] **Catálogo de apps**: o agente lê os RemoteApps publicados e os grupos permitidos (`Get-RDRemoteApp`) e os ícones. O Manager monta a **lista de apps de cada usuário** e o cliente desenha a tela inicial. App novo publicado no servidor aparece nos postos sozinho.
 - [ ] **Painel web**: postos online/offline, quem está logado e onde, **quais apps estão abertos**, sessões desconectadas, ações (derrubar sessão, logoff, reiniciar posto) e histórico.
+- [ ] **Tokens Cloudflare por posto**: gerar, distribuir e revogar service tokens pela API da Cloudflare, a partir do painel.
+- [ ] Painel mostra o **modo de conexão de cada posto** (LAN ou túnel) e a latência.
 - [ ] **Protocolo do cliente documentado** (OpenAPI), para todas as trilhas usarem o mesmo.
 
 ### Fase 3 — App cliente da trilha principal (3 a 4 semanas)
 - [ ] Tela de login, **tela inicial com os ícones dos apps**, abertura de RemoteApps, desktop completo para admins e volta automática para o login.
 - [ ] Integração com o Manager (registro, configuração e heartbeat).
 - [ ] Modo quiosque travado e atualização automática.
+- [ ] **Detecção LAN/internet** e início automático do túnel (`cloudflared` ou WARP).
 - [ ] Imagem ou instalador para replicar os postos.
 
 ### Fase 4 — App da trilha secundária (2 a 4 semanas)
@@ -222,6 +276,7 @@ Cada trilha começa com **um aparelho** e, sempre que existir, um cliente RDP pr
 ### Fase 5 — Produção e piloto (2 semanas)
 - [ ] Comprar o Windows Server e as RDS CALs e ativar o licenciamento.
 - [ ] GPOs finais, certificado válido e backup.
+- [ ] Plano B de acesso remoto (VPN ou RD Gateway) documentado e testado.
 - [ ] Piloto com 3 a 5 usuários reais durante 1 a 2 semanas.
 
 ### Fase 6 — Implantação e operação
@@ -235,7 +290,7 @@ Cada trilha começa com **um aparelho** e, sempre que existir, um cliente RDP pr
 
 ---
 
-## 5. Roteiro de teste padrão (vale para todas as trilhas)
+## 6. Roteiro de teste padrão (vale para todas as trilhas)
 
 | # | Teste | Critério |
 |---|---|---|
@@ -255,10 +310,14 @@ Cada trilha começa com **um aparelho** e, sempre que existir, um cliente RDP pr
 | 11 | Uso contínuo de 5 dias | sem travar, sem aquecer demais, sem bateria inchando |
 | 12 | Custo total do posto | registrar |
 | 13 | Tempo para preparar um posto novo | registrar |
+| 14 | **Via Cloudflare Tunnel**: latência (ping do posto até o servidor pelo túnel) | < 60 ms |
+| 15 | **Via Cloudflare Tunnel**: repetir os testes 5, 6, 6a e 7 | experiência próxima da rede local |
+| 16 | **Via Cloudflare Tunnel**: derrubar a internet do posto por 30 s | o túnel volta e o RDP reconecta sozinho |
+| 17 | **Token revogado** no painel | o posto perde o acesso em < 1 min |
 
 ---
 
-## 6. Estrutura do repositório
+## 7. Estrutura do repositório
 
 ```
 Multi_User_FH/
@@ -276,7 +335,7 @@ Multi_User_FH/
 
 ---
 
-## 7. Riscos e cuidados
+## 8. Riscos e cuidados
 
 | Risco | Mitigação |
 |---|---|
@@ -287,17 +346,20 @@ Multi_User_FH/
 | Cartão SD corromper (trilha A) | Root somente leitura, SSD e watchdog. |
 | Usuário escapar do RemoteApp e abrir outros programas | AppLocker/WDAC + GPOs de bloqueio, testados no roteiro (6c). |
 | Cliente sem bom suporte a RemoteApp (trilha B) | Usar RemoteApp em tela cheia (um por vez) ou sessão que começa direto num programa. |
+| Porta RDP exposta na internet | Nunca abrir a 3389; acesso externo só pelo Cloudflare Tunnel + Access. |
+| Cloudflare fora do ar | A rede local continua funcionando; VPN ou RD Gateway como plano B. |
+| Posto roubado | Revogar o service token do posto no painel. |
 | Senha exposta | Credenciais só em memória, NLA obrigatório, TLS e certificado válido. |
 | Servidor único é ponto de falha | Backup e snapshot; depois, um segundo Session Host com Connection Broker. |
 | Vários tipos de hardware para manter | Contrato comum com o Manager, e só 1 ou 2 trilhas em produção. |
 
 ---
 
-## 8. Perguntas em aberto
+## 9. Perguntas em aberto
 
 1. Quantos postos e quantos usuários simultâneos?
 2. Quais programas os usuários vão usar?
-3. Os postos ficam na rede local do servidor ou acessam pela internet (Gateway ou VPN)?
+3. Quantos postos ficarão fora da rede local (acessando via Cloudflare)? A firma já tem um domínio que possa ser gerenciado na Cloudflare?
 4. Já existe Active Directory, ou vamos usar contas locais?
 5. Que periféricos são necessários: impressora, leitor de código de barras, webcam, áudio?
 6. O servidor será físico, uma VM local ou ficará na nuvem?
@@ -306,7 +368,7 @@ Multi_User_FH/
 
 ---
 
-## 9. Próximo passo imediato
+## 10. Próximo passo imediato
 
 1. Montar o **servidor de teste com a coleção RemoteApp** (Fase 0).
 2. Conseguir **um aparelho de cada trilha** que for testar primeiro. Sugestão: **Galaxy S10 + hub** (B) e **Pi 5 ou thin client** (A). A trilha C entra assim que houver um Snapdragon compatível.
